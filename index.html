@@ -120,6 +120,21 @@ const FORMATIONS={
   "4-1-4-1":[[50,88],[15,68],[35,68],[65,68],[85,68],[50,56],[15,40],[35,38],[65,38],[85,40],[50,18]],
 };
 
+// Posición de cada jugador (para alineación automática) y su etiqueta completa
+const POSITIONS=["POR","DEF","MED","DEL"];
+const POSITION_LABELS={POR:"Portero",DEF:"Defensa",MED:"Mediocampista",DEL:"Delantero"};
+
+// A partir del nombre de la formación (ej. "4-2-3-1") calcula qué rol
+// corresponde a cada puesto, en el mismo orden que sus coordenadas en FORMATIONS:
+// el primer número siempre son defensas, el último siempre son delanteros,
+// y todo lo que quede en medio (una o más líneas) se agrupa como mediocampistas.
+function formationRoles(key){
+  const parts=key.split("-").map(Number);
+  const def=parts[0], fwd=parts[parts.length-1];
+  const mid=parts.slice(1,-1).reduce((a,b)=>a+b,0);
+  return ["POR",...Array(def).fill("DEF"),...Array(mid).fill("MED"),...Array(fwd).fill("DEL")];
+}
+
 // ─── COMPRESS PHOTO ─────────────────────────────────────────
 function compressPhoto(dataUrl, maxSize=200){
   return new Promise(resolve=>{
@@ -307,7 +322,7 @@ function showToast(msg, type="ok", ms=2800){
 // ─── STATE ──────────────────────────────────────────────────
 function mkPlayers(){
   return Array.from({length:11},(_,i)=>({
-    id:i+1, name:"Jugador "+(i+1), number:i+1, photo:null, color:COLORS[i%COLORS.length]
+    id:i+1, name:"Jugador "+(i+1), number:i+1, photo:null, color:COLORS[i%COLORS.length], position:"", captain:false
   }));
 }
 let state={
@@ -328,7 +343,12 @@ function avatarHTML(p,size=44){
   const inner=p.photo
     ?`<img src="${p.photo}" style="width:100%;height:100%;object-fit:cover;" alt=""/>`
     :`<span style="font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:${Math.round(size*.42)}px;color:${p.color==="#cbd5e1"?"#1e293b":p.color}">${p.number}</span>`;
-  return `<div style="width:${size}px;height:${size}px;border-radius:50%;overflow:hidden;flex-shrink:0;border:2.5px solid ${p.color};background:${p.photo?"transparent":p.color+"44"};display:flex;align-items:center;justify-content:center;">${inner}</div>`;
+  const badgeSize=Math.max(13,Math.round(size*.36));
+  const badge=p.captain?`<div style="position:absolute;bottom:-2px;right:-2px;width:${badgeSize}px;height:${badgeSize}px;border-radius:50%;background:#fbbf24;color:#000;font-size:${Math.max(8,Math.round(size*.22))}px;font-weight:900;display:flex;align-items:center;justify-content:center;border:1.5px solid #07101f;font-family:'Barlow Condensed',sans-serif;line-height:1;">C</div>`:"";
+  return `<div style="position:relative;flex-shrink:0;width:${size}px;height:${size}px;">
+    <div style="width:100%;height:100%;border-radius:50%;overflow:hidden;border:2.5px solid ${p.color};background:${p.photo?"transparent":p.color+"44"};display:flex;align-items:center;justify-content:center;">${inner}</div>
+    ${badge}
+  </div>`;
 }
 
 // ─── RENDER ──────────────────────────────────────────────────
@@ -433,7 +453,7 @@ function renderSquad(container){
     row.innerHTML=avatarHTML(p,46);
     const info=document.createElement("div");
     info.style.cssText="flex:1;min-width:0;";
-    info.innerHTML=`<div style="font-weight:700;font-size:14px;color:#f1f5f9;font-family:'Barlow Condensed',sans-serif;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.name}</div><div style="font-size:11px;color:#475569;font-family:'Barlow Condensed',sans-serif;">#${p.number} ${onField(p.id)?'<span style="color:#4ade80;font-size:9px;font-weight:700;">● EN CAMPO</span>':''}</div>`;
+    info.innerHTML=`<div style="font-weight:700;font-size:14px;color:#f1f5f9;font-family:'Barlow Condensed',sans-serif;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.name}${p.captain?' <span style="color:#fbbf24;">🎖️</span>':''}</div><div style="font-size:11px;color:#475569;font-family:'Barlow Condensed',sans-serif;">#${p.number}${p.position?" · "+p.position:""} ${onField(p.id)?'<span style="color:#4ade80;font-size:9px;font-weight:700;">● EN CAMPO</span>':''}</div>`;
     row.appendChild(info);
     const btns=document.createElement("div");
     btns.style.cssText="display:flex;gap:4px;";
@@ -542,6 +562,7 @@ function renderBoard(container){
 
   // Bench
   const bl=document.createElement("div");
+  bl.id="bench-label";
   bl.style.cssText="color:#475569;font-size:10px;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px;text-transform:uppercase;margin:14px 0 8px;";
   bl.textContent="🪑 BANCA — toca para añadir al campo";
   container.appendChild(bl);
@@ -565,6 +586,14 @@ function renderBoard(container){
     });
   }
   container.appendChild(bench);
+  const upBtn=document.createElement("button");
+  upBtn.style.cssText="margin-top:10px;width:100%;padding:9px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;color:#94a3b8;cursor:pointer;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:12px;letter-spacing:.5px;";
+  upBtn.textContent="⬆️ VOLVER A LA CANCHA";
+  upBtn.addEventListener("click",()=>{
+    const el=document.getElementById("tactic-field");
+    if(el) el.scrollIntoView({behavior:"smooth",block:"start"});
+  });
+  container.appendChild(upBtn);
   if(state.tokens.length>0){
     const cb=document.createElement("button");
     cb.style.cssText="margin-top:12px;width:100%;padding:11px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:12px;color:#ef4444;cursor:pointer;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:13px;letter-spacing:1px;";
@@ -613,12 +642,27 @@ function eraseNear(pt){
 
 function applyFormation(f){
   state.formation=f;
-  const pos=FORMATIONS[f];
-  state.tokens=pos.map((p,i)=>{
-    const ex=state.tokens[i];
-    const player=ex?getPlayer(ex.pid):state.players[i];
-    return player?{id:"t"+i,pid:player.id,x:p[0],y:p[1]}:null;
-  }).filter(Boolean);
+  const coords=FORMATIONS[f];
+  const roles=formationRoles(f);
+  // Prioriza a los que ya están en la cancha (para no desarmar todo al cambiar
+  // de formación), y entre ellos y la banca, empareja por posición declarada.
+  const onFieldIds=new Set(state.tokens.map(t=>t.pid));
+  const pool=[
+    ...state.players.filter(p=>onFieldIds.has(p.id)),
+    ...state.players.filter(p=>!onFieldIds.has(p.id))
+  ];
+  const used=new Set();
+  const newTokens=[];
+  coords.forEach((c,i)=>{
+    const role=roles[i];
+    let player=pool.find(p=>!used.has(p.id) && p.position===role);
+    if(!player) player=pool.find(p=>!used.has(p.id));
+    if(player){
+      used.add(player.id);
+      newTokens.push({id:"t"+i,pid:player.id,x:c[0],y:c[1]});
+    }
+  });
+  state.tokens=newTokens;
   state.selToken=null; render();
 }
 
@@ -626,7 +670,7 @@ function applyFormation(f){
 function buildField(){
   const wrap=document.createElement("div");
   wrap.id="tactic-field";
-  wrap.style.cssText="position:relative;width:100%;padding-bottom:148%;border-radius:16px;overflow:hidden;touch-action:none;box-shadow:0 0 0 3px rgba(255,255,255,.06),0 8px 40px rgba(0,0,0,.6);";
+  wrap.style.cssText="position:relative;width:100%;padding-bottom:148%;border-radius:16px;overflow:hidden;touch-action:pan-y;box-shadow:0 0 0 3px rgba(255,255,255,.06),0 8px 40px rgba(0,0,0,.6);";
 
   const grass=document.createElement("div");
   grass.style.cssText="position:absolute;inset:0;background:linear-gradient(180deg,#3f4552 0%,#363b46 12.5%,#3f4552 12.5%,#3f4552 25%,#363b46 25%,#363b46 37.5%,#3f4552 37.5%,#3f4552 50%,#363b46 50%,#363b46 62.5%,#3f4552 62.5%,#3f4552 75%,#363b46 75%,#363b46 87.5%,#3f4552 87.5%);";
@@ -742,6 +786,8 @@ function buildField(){
       cursor:grab;user-select:none;z-index:${isSel?50:10};touch-action:none;
       filter:${isSel?"drop-shadow(0 0 12px rgba(255,215,0,.8))":"drop-shadow(0 2px 8px rgba(0,0,0,.6))"};`;
 
+    const circleWrap=document.createElement("div");
+    circleWrap.style.cssText="position:relative;";
     const circle=document.createElement("div");
     circle.style.cssText=`width:42px;height:42px;border-radius:50%;overflow:hidden;
       border:${isSel?"3px solid #ffd700":`2.5px solid ${p.color}`};
@@ -758,7 +804,14 @@ function buildField(){
       num.textContent=p.number;
       circle.appendChild(num);
     }
-    el.appendChild(circle);
+    circleWrap.appendChild(circle);
+    if(p.captain){
+      const cap=document.createElement("div");
+      cap.style.cssText="position:absolute;bottom:-2px;right:-2px;width:15px;height:15px;border-radius:50%;background:#fbbf24;color:#000;font-size:9px;font-weight:900;display:flex;align-items:center;justify-content:center;border:1.5px solid #07101f;font-family:'Barlow Condensed',sans-serif;line-height:1;";
+      cap.textContent="C";
+      circleWrap.appendChild(cap);
+    }
+    el.appendChild(circleWrap);
     const lbl=document.createElement("div");
     lbl.className="tok-label"; lbl.textContent=p.name;
     el.appendChild(lbl);
@@ -802,6 +855,23 @@ function buildField(){
     tokLayer.appendChild(el);
   });
   wrap.appendChild(tokLayer);
+
+  // Botón flotante para bajar a la banca (fijo a media altura, filo derecho)
+  const scrollBtn=document.createElement("button");
+  scrollBtn.setAttribute("aria-label","Ver banca");
+  scrollBtn.style.cssText=`position:absolute;top:50%;right:8px;transform:translateY(-50%);
+    width:32px;height:32px;border-radius:50%;border:1px solid rgba(255,255,255,.2);
+    background:rgba(7,16,31,.75);backdrop-filter:blur(4px);color:#f1f5f9;font-size:15px;
+    display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:30;
+    box-shadow:0 4px 14px rgba(0,0,0,.5);padding:0;`;
+  scrollBtn.textContent="⌄";
+  scrollBtn.addEventListener("click",e=>{
+    e.stopPropagation();
+    const el2=document.getElementById("bench-label");
+    if(el2) el2.scrollIntoView({behavior:"smooth",block:"start"});
+  });
+  wrap.appendChild(scrollBtn);
+
   return wrap;
 }
 
@@ -893,6 +963,52 @@ function renderModal(){
   });
   box.appendChild(cg);
 
+  // Posición (para armar alineaciones automáticas por formación)
+  const poslbl=document.createElement("label");
+  poslbl.style.cssText="color:#475569;font-size:10px;font-family:'Barlow Condensed',sans-serif;font-weight:800;letter-spacing:1px;display:block;margin-bottom:8px;";
+  poslbl.textContent="POSICIÓN"; box.appendChild(poslbl);
+  let localPosition=existing?.position||"";
+  const posRow=document.createElement("div");
+  posRow.style.cssText="display:flex;gap:6px;margin-bottom:18px;";
+  POSITIONS.forEach(code=>{
+    const b=document.createElement("button");
+    b.type="button";
+    const sel=localPosition===code;
+    b.dataset.code=code;
+    b.style.cssText=`flex:1;padding:9px 0;border-radius:10px;cursor:pointer;
+      border:1px solid ${sel?"transparent":"rgba(255,255,255,.12)"};
+      background:${sel?"linear-gradient(135deg,#4ade80,#16a34a)":"rgba(255,255,255,.05)"};
+      color:${sel?"#000":"#94a3b8"};font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:12px;`;
+    b.textContent=code;
+    b.title=POSITION_LABELS[code];
+    b.addEventListener("click",()=>{
+      localPosition = localPosition===code ? "" : code;
+      posRow.querySelectorAll("button").forEach(btn=>{
+        const isSel=localPosition===btn.dataset.code;
+        btn.style.background=isSel?"linear-gradient(135deg,#4ade80,#16a34a)":"rgba(255,255,255,.05)";
+        btn.style.color=isSel?"#000":"#94a3b8";
+        btn.style.border=isSel?"1px solid transparent":"1px solid rgba(255,255,255,.12)";
+      });
+    });
+    posRow.appendChild(b);
+  });
+  box.appendChild(posRow);
+
+  // Capitán del equipo (solo puede haber uno)
+  let localCaptain=existing?.captain||false;
+  const capBtn=document.createElement("button");
+  capBtn.type="button";
+  const refreshCapBtn=()=>{
+    capBtn.style.cssText=`width:100%;padding:11px;border-radius:10px;cursor:pointer;margin-bottom:20px;
+      border:1px solid ${localCaptain?"transparent":"rgba(255,255,255,.12)"};
+      background:${localCaptain?"linear-gradient(135deg,#fbbf24,#d97706)":"rgba(255,255,255,.05)"};
+      color:${localCaptain?"#000":"#94a3b8"};font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:13px;letter-spacing:.3px;`;
+    capBtn.textContent=localCaptain?"🎖️ CAPITÁN DEL EQUIPO":"🎖️ Marcar como capitán";
+  };
+  refreshCapBtn();
+  capBtn.addEventListener("click",()=>{ localCaptain=!localCaptain; refreshCapBtn(); });
+  box.appendChild(capBtn);
+
   // Save button
   const sb=document.createElement("button");
   sb.style.cssText="width:100%;padding:14px;border-radius:12px;border:none;background:linear-gradient(135deg,#4ade80,#16a34a);color:#000;font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:900;cursor:pointer;letter-spacing:1px;";
@@ -901,12 +1017,16 @@ function renderModal(){
     const nameVal=document.getElementById("_name").value.trim();
     const numVal=parseInt(document.getElementById("_num").value)||1;
     if(!nameVal){showToast("⚠️ Escribe un nombre","warn");return;}
+    if(localCaptain){
+      // Solo puede haber un capitán a la vez
+      state.players.forEach(pl=>{ pl.captain=false; });
+    }
     if(pid){
       const idx=state.players.findIndex(p=>p.id===pid);
-      if(idx!==-1) state.players[idx]={...state.players[idx],name:nameVal,number:numVal,photo:localPhoto,color:localColor};
+      if(idx!==-1) state.players[idx]={...state.players[idx],name:nameVal,number:numVal,photo:localPhoto,color:localColor,position:localPosition,captain:localCaptain};
     } else {
       if(state.players.length>=30){showToast("⚠️ Máximo 30 jugadores","warn");return;}
-      state.players.push({id:Date.now(),name:nameVal,number:numVal,photo:localPhoto,color:localColor});
+      state.players.push({id:Date.now(),name:nameVal,number:numVal,photo:localPhoto,color:localColor,position:localPosition,captain:localCaptain});
     }
     state.modal=null;
     render();
