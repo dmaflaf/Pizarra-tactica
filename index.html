@@ -322,7 +322,7 @@ function showToast(msg, type="ok", ms=2800){
 // ─── STATE ──────────────────────────────────────────────────
 function mkPlayers(){
   return Array.from({length:11},(_,i)=>({
-    id:i+1, name:"Jugador "+(i+1), number:i+1, photo:null, color:COLORS[i%COLORS.length], position:"", captain:false
+    id:i+1, name:"Jugador "+(i+1), number:i+1, photo:null, color:COLORS[i%COLORS.length], position:"", captain:false, specialCaptain:false
   }));
 }
 let state={
@@ -339,15 +339,27 @@ function getPlayer(pid){return state.players.find(p=>p.id===pid);}
 function onField(pid){return state.tokens.some(t=>t.pid===pid);}
 
 // ─── AVATAR HTML ─────────────────────────────────────────────
+// Insignia sobre el avatar: capitán especial (paloma, en memoria de un jugador
+// fallecido) tiene prioridad visual sobre la cinta de capitán normal.
+function captainBadgeHTML(p,size){
+  const badgeSize=Math.max(13,Math.round(size*.36));
+  const fontSize=Math.max(8,Math.round(size*.22));
+  if(p.specialCaptain){
+    return `<div style="position:absolute;bottom:-2px;right:-2px;width:${badgeSize}px;height:${badgeSize}px;border-radius:50%;background:#f1f5f9;color:#1e293b;font-size:${fontSize+2}px;display:flex;align-items:center;justify-content:center;border:1.5px solid #07101f;line-height:1;">🕊️</div>`;
+  }
+  if(p.captain){
+    return `<div style="position:absolute;bottom:-2px;right:-2px;width:${badgeSize}px;height:${badgeSize}px;border-radius:50%;background:#fbbf24;color:#000;font-size:${fontSize}px;font-weight:900;display:flex;align-items:center;justify-content:center;border:1.5px solid #07101f;font-family:'Barlow Condensed',sans-serif;line-height:1;">C</div>`;
+  }
+  return "";
+}
+
 function avatarHTML(p,size=44){
   const inner=p.photo
     ?`<img src="${p.photo}" style="width:100%;height:100%;object-fit:cover;" alt=""/>`
     :`<span style="font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:${Math.round(size*.42)}px;color:${p.color==="#cbd5e1"?"#1e293b":p.color}">${p.number}</span>`;
-  const badgeSize=Math.max(13,Math.round(size*.36));
-  const badge=p.captain?`<div style="position:absolute;bottom:-2px;right:-2px;width:${badgeSize}px;height:${badgeSize}px;border-radius:50%;background:#fbbf24;color:#000;font-size:${Math.max(8,Math.round(size*.22))}px;font-weight:900;display:flex;align-items:center;justify-content:center;border:1.5px solid #07101f;font-family:'Barlow Condensed',sans-serif;line-height:1;">C</div>`:"";
   return `<div style="position:relative;flex-shrink:0;width:${size}px;height:${size}px;">
     <div style="width:100%;height:100%;border-radius:50%;overflow:hidden;border:2.5px solid ${p.color};background:${p.photo?"transparent":p.color+"44"};display:flex;align-items:center;justify-content:center;">${inner}</div>
-    ${badge}
+    ${captainBadgeHTML(p,size)}
   </div>`;
 }
 
@@ -453,7 +465,7 @@ function renderSquad(container){
     row.innerHTML=avatarHTML(p,46);
     const info=document.createElement("div");
     info.style.cssText="flex:1;min-width:0;";
-    info.innerHTML=`<div style="font-weight:700;font-size:14px;color:#f1f5f9;font-family:'Barlow Condensed',sans-serif;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.name}${p.captain?' <span style="color:#fbbf24;">🎖️</span>':''}</div><div style="font-size:11px;color:#475569;font-family:'Barlow Condensed',sans-serif;">#${p.number}${p.position?" · "+p.position:""} ${onField(p.id)?'<span style="color:#4ade80;font-size:9px;font-weight:700;">● EN CAMPO</span>':''}</div>`;
+    info.innerHTML=`<div style="font-weight:700;font-size:14px;color:#f1f5f9;font-family:'Barlow Condensed',sans-serif;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.name}${p.specialCaptain?' 🕊️':(p.captain?' <span style="color:#fbbf24;">🎖️</span>':'')}</div><div style="font-size:11px;color:#475569;font-family:'Barlow Condensed',sans-serif;">#${p.number}${p.position?" · "+p.position:""} ${onField(p.id)?'<span style="color:#4ade80;font-size:9px;font-weight:700;">● EN CAMPO</span>':''}</div>`;
     row.appendChild(info);
     const btns=document.createElement("div");
     btns.style.cssText="display:flex;gap:4px;";
@@ -586,14 +598,6 @@ function renderBoard(container){
     });
   }
   container.appendChild(bench);
-  const upBtn=document.createElement("button");
-  upBtn.style.cssText="margin-top:10px;width:100%;padding:9px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;color:#94a3b8;cursor:pointer;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:12px;letter-spacing:.5px;";
-  upBtn.textContent="⬆️ VOLVER A LA CANCHA";
-  upBtn.addEventListener("click",()=>{
-    const el=document.getElementById("tactic-field");
-    if(el) el.scrollIntoView({behavior:"smooth",block:"start"});
-  });
-  container.appendChild(upBtn);
   if(state.tokens.length>0){
     const cb=document.createElement("button");
     cb.style.cssText="margin-top:12px;width:100%;padding:11px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:12px;color:#ef4444;cursor:pointer;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:13px;letter-spacing:1px;";
@@ -805,12 +809,7 @@ function buildField(){
       circle.appendChild(num);
     }
     circleWrap.appendChild(circle);
-    if(p.captain){
-      const cap=document.createElement("div");
-      cap.style.cssText="position:absolute;bottom:-2px;right:-2px;width:15px;height:15px;border-radius:50%;background:#fbbf24;color:#000;font-size:9px;font-weight:900;display:flex;align-items:center;justify-content:center;border:1.5px solid #07101f;font-family:'Barlow Condensed',sans-serif;line-height:1;";
-      cap.textContent="C";
-      circleWrap.appendChild(cap);
-    }
+    circleWrap.insertAdjacentHTML("beforeend", captainBadgeHTML(p,42));
     el.appendChild(circleWrap);
     const lbl=document.createElement("div");
     lbl.className="tok-label"; lbl.textContent=p.name;
@@ -855,22 +854,6 @@ function buildField(){
     tokLayer.appendChild(el);
   });
   wrap.appendChild(tokLayer);
-
-  // Botón flotante para bajar a la banca (fijo a media altura, filo derecho)
-  const scrollBtn=document.createElement("button");
-  scrollBtn.setAttribute("aria-label","Ver banca");
-  scrollBtn.style.cssText=`position:absolute;top:50%;right:8px;transform:translateY(-50%);
-    width:32px;height:32px;border-radius:50%;border:1px solid rgba(255,255,255,.2);
-    background:rgba(7,16,31,.75);backdrop-filter:blur(4px);color:#f1f5f9;font-size:15px;
-    display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:30;
-    box-shadow:0 4px 14px rgba(0,0,0,.5);padding:0;`;
-  scrollBtn.textContent="⌄";
-  scrollBtn.addEventListener("click",e=>{
-    e.stopPropagation();
-    const el2=document.getElementById("bench-label");
-    if(el2) el2.scrollIntoView({behavior:"smooth",block:"start"});
-  });
-  wrap.appendChild(scrollBtn);
 
   return wrap;
 }
@@ -994,20 +977,41 @@ function renderModal(){
   });
   box.appendChild(posRow);
 
-  // Capitán del equipo (solo puede haber uno)
+  // Capitán del equipo (hasta 3 a la vez)
   let localCaptain=existing?.captain||false;
   const capBtn=document.createElement("button");
   capBtn.type="button";
   const refreshCapBtn=()=>{
-    capBtn.style.cssText=`width:100%;padding:11px;border-radius:10px;cursor:pointer;margin-bottom:20px;
+    capBtn.style.cssText=`width:100%;padding:11px;border-radius:10px;cursor:pointer;margin-bottom:10px;
       border:1px solid ${localCaptain?"transparent":"rgba(255,255,255,.12)"};
       background:${localCaptain?"linear-gradient(135deg,#fbbf24,#d97706)":"rgba(255,255,255,.05)"};
       color:${localCaptain?"#000":"#94a3b8"};font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:13px;letter-spacing:.3px;`;
     capBtn.textContent=localCaptain?"🎖️ CAPITÁN DEL EQUIPO":"🎖️ Marcar como capitán";
   };
   refreshCapBtn();
-  capBtn.addEventListener("click",()=>{ localCaptain=!localCaptain; refreshCapBtn(); });
+  capBtn.addEventListener("click",()=>{
+    if(!localCaptain){
+      const otherCaptains=state.players.filter(pl=>pl.captain && pl.id!==pid).length;
+      if(otherCaptains>=3){ showToast("⚠️ Ya hay 3 capitanes, quita uno primero","warn"); return; }
+    }
+    localCaptain=!localCaptain; refreshCapBtn();
+  });
   box.appendChild(capBtn);
+
+  // Capitán especial: distintivo en memoria de un jugador fallecido (paloma blanca)
+  let localSpecial=existing?.specialCaptain||false;
+  const specBtn=document.createElement("button");
+  specBtn.type="button";
+  const refreshSpecBtn=()=>{
+    specBtn.style.cssText=`width:100%;padding:11px;border-radius:10px;cursor:pointer;margin-bottom:20px;
+      border:1px solid ${localSpecial?"transparent":"rgba(255,255,255,.12)"};
+      background:${localSpecial?"linear-gradient(135deg,#e2e8f0,#94a3b8)":"rgba(255,255,255,.05)"};
+      color:${localSpecial?"#1e293b":"#94a3b8"};font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:13px;letter-spacing:.3px;`;
+    specBtn.textContent=localSpecial?"🕊️ CAPITÁN ESPECIAL":"🕊️ Capitán especial";
+  };
+  refreshSpecBtn();
+  specBtn.addEventListener("click",()=>{ localSpecial=!localSpecial; refreshSpecBtn(); });
+  box.appendChild(specBtn);
 
   // Save button
   const sb=document.createElement("button");
@@ -1017,16 +1021,12 @@ function renderModal(){
     const nameVal=document.getElementById("_name").value.trim();
     const numVal=parseInt(document.getElementById("_num").value)||1;
     if(!nameVal){showToast("⚠️ Escribe un nombre","warn");return;}
-    if(localCaptain){
-      // Solo puede haber un capitán a la vez
-      state.players.forEach(pl=>{ pl.captain=false; });
-    }
     if(pid){
       const idx=state.players.findIndex(p=>p.id===pid);
-      if(idx!==-1) state.players[idx]={...state.players[idx],name:nameVal,number:numVal,photo:localPhoto,color:localColor,position:localPosition,captain:localCaptain};
+      if(idx!==-1) state.players[idx]={...state.players[idx],name:nameVal,number:numVal,photo:localPhoto,color:localColor,position:localPosition,captain:localCaptain,specialCaptain:localSpecial};
     } else {
       if(state.players.length>=30){showToast("⚠️ Máximo 30 jugadores","warn");return;}
-      state.players.push({id:Date.now(),name:nameVal,number:numVal,photo:localPhoto,color:localColor,position:localPosition,captain:localCaptain});
+      state.players.push({id:Date.now(),name:nameVal,number:numVal,photo:localPhoto,color:localColor,position:localPosition,captain:localCaptain,specialCaptain:localSpecial});
     }
     state.modal=null;
     render();
