@@ -153,16 +153,26 @@ function compressPhoto(dataUrl, maxSize=200){
 }
 
 // ─── STORAGE ────────────────────────────────────────────────
+// Arma el objeto de datos persistentes en un solo lugar, así el guardado
+// manual y el autoguardado silencioso nunca quedan desincronizados.
+function buildSaveData(){
+  return {
+    players: state.players,
+    tokens: state.tokens,
+    formation: state.formation,
+    drawings: state.drawings,
+    club: state.club,
+    match: state.match,
+    confirmed: state.confirmed,
+    savedAt: new Date().toLocaleString("es")
+  };
+}
+
 function saveSession(){
   try{
-    const data={
-      players: state.players,
-      tokens: state.tokens,
-      formation: state.formation,
-      drawings: state.drawings,
-      savedAt: new Date().toLocaleString("es")
-    };
+    const data=buildSaveData();
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    lastSavedLabel=data.savedAt;
     const btn=document.getElementById("btn-save");
     if(btn){btn.textContent="✅ GUARDADO";setTimeout(()=>{btn.innerHTML='💾 GUARDAR SESIÓN';},2000);}
     showToast("✅ Sesión guardada correctamente","ok");
@@ -175,6 +185,37 @@ function saveSession(){
   }
 }
 
+// Autoguardado silencioso: mismo formato que "GUARDAR SESIÓN" pero sin
+// toast ni animación de botón, para no interrumpir mientras se trabaja.
+let autoSaveTimer=null;
+let autoSaveFailed=false;
+function scheduleAutoSave(){
+  clearTimeout(autoSaveTimer);
+  autoSaveTimer=setTimeout(()=>{
+    try{
+      const data=buildSaveData();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      lastSavedLabel=data.savedAt;
+      autoSaveFailed=false;
+      updateSavedIndicator();
+    }catch(e){
+      // Avisa una sola vez por sesión de fallo (ej. sin espacio), para no
+      // saturar de toasts al usuario mientras sigue trabajando.
+      if(!autoSaveFailed){
+        autoSaveFailed=true;
+        showToast(e.name==="QuotaExceededError"?"⚠️ Sin espacio: intenta quitar fotos grandes":"⚠️ No se pudo autoguardar","err");
+      }
+    }
+  }, 500);
+}
+
+// Actualiza solo el textito "guardado hace..." del header sin re-renderizar
+// toda la app (evita perder foco de inputs mientras se escribe).
+function updateSavedIndicator(){
+  const el=document.getElementById("saved-indicator");
+  if(el && lastSavedLabel) el.textContent="💾 "+lastSavedLabel;
+}
+
 function loadSession(){
   try{
     const raw=localStorage.getItem(STORAGE_KEY);
@@ -185,6 +226,10 @@ function loadSession(){
       state.tokens=data.tokens||[];
       state.formation=data.formation||"4-4-2";
       state.drawings=data.drawings||[];
+      state.club=data.club||{name:"",crest:null};
+      state.match=data.match||{rival:"",date:"",time:"",stadium:""};
+      state.confirmed=Array.isArray(data.confirmed)?data.confirmed:[];
+      lastSavedLabel=data.savedAt||"";
       return data.savedAt||true;
     }
   }catch(e){}
@@ -223,28 +268,64 @@ function saveCurrentPlay(){
 }
 
 function confirmClear(){
-  if(confirm("¿Borrar todos los datos guardados? Esta acción no se puede deshacer.")){
-    localStorage.removeItem(STORAGE_KEY);
-    state.players=mkPlayers();
-    state.tokens=[];
-    state.formation="4-4-2";
-    state.selToken=null;
-    state.search="";
-    render();
-    showToast("🗑 Datos borrados","warn");
-  }
+  showConfirmModal({
+    icon:"🗑",
+    title:"¿Borrar todos los datos?",
+    message:"Se borrará la plantilla, la pizarra y la convocatoria guardadas en este dispositivo. Tus jugadas de \"Mis jugadas\" NO se tocan. Esta acción no se puede deshacer.",
+    confirmLabel:"Borrar todo",
+    onConfirm:()=>{
+      localStorage.removeItem(STORAGE_KEY);
+      state.players=mkPlayers();
+      state.tokens=[];
+      state.formation="4-4-2";
+      state.selToken=null;
+      state.search="";
+      state.club={name:"",crest:null};
+      state.match={rival:"",date:"",time:"",stadium:""};
+      state.confirmed=[];
+      lastSavedLabel="";
+      render();
+      showToast("🗑 Datos borrados","warn");
+    }
+  });
+}
+
+// ─── CONFIRM MODAL ─────────────────────────────────────────────
+// Reemplaza al confirm() nativo del navegador (feo e inconsistente con el
+// diseño) por un modal propio. Se añade directo a <body>, fuera del árbol
+// que maneja render(), para no depender de state.modal.
+function showConfirmModal(opts){
+  const overlay=document.createElement("div");
+  overlay.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.82);backdrop-filter:blur(12px);display:flex;align-items:center;justify-content:center;z-index:3000;padding:16px;";
+  const close=()=>overlay.remove();
+  overlay.addEventListener("click",e=>{if(e.target===overlay) close();});
+
+  const box=document.createElement("div");
+  box.style.cssText="background:#0c1320;border:1px solid rgba(239,68,68,.25);border-radius:22px;padding:26px 22px;width:100%;max-width:320px;box-shadow:0 30px 80px rgba(0,0,0,.8);text-align:center;";
+  box.innerHTML=`
+    <div style="font-size:34px;margin-bottom:10px;">${opts.icon||"⚠️"}</div>
+    <div style="font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:17px;color:#f1f5f9;margin-bottom:8px;letter-spacing:.3px;">${opts.title||"¿Estás seguro?"}</div>
+    <div style="font-family:'Barlow',sans-serif;font-size:13px;color:#94a3b8;line-height:1.5;margin-bottom:22px;">${opts.message||""}</div>`;
+
+  const row=document.createElement("div");
+  row.style.cssText="display:flex;gap:8px;";
+  const cancelBtn=document.createElement("button");
+  cancelBtn.textContent=opts.cancelLabel||"Cancelar";
+  cancelBtn.style.cssText="flex:1;padding:12px 0;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:#94a3b8;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:13px;letter-spacing:.3px;cursor:pointer;";
+  cancelBtn.addEventListener("click",close);
+  const okBtn=document.createElement("button");
+  okBtn.textContent=opts.confirmLabel||"Eliminar";
+  okBtn.style.cssText="flex:1;padding:12px 0;border-radius:12px;border:none;background:linear-gradient(135deg,#ef4444,#b91c1c);color:#fff;font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:13px;letter-spacing:.3px;cursor:pointer;box-shadow:0 4px 16px rgba(239,68,68,.35);";
+  okBtn.addEventListener("click",()=>{close(); opts.onConfirm&&opts.onConfirm();});
+  row.appendChild(cancelBtn); row.appendChild(okBtn);
+  box.appendChild(row);
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
 }
 
 function exportBackup(){
   try{
-    const data={
-      players: state.players,
-      tokens: state.tokens,
-      formation: state.formation,
-      drawings: state.drawings,
-      plays: state.plays,
-      savedAt: new Date().toLocaleString("es")
-    };
+    const data={...buildSaveData(), plays: state.plays};
     const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
     const url=URL.createObjectURL(blob);
     const a=document.createElement("a");
@@ -269,6 +350,9 @@ function importBackup(evt){
       state.tokens=data.tokens||[];
       state.formation=data.formation||"4-4-2";
       state.drawings=data.drawings||[];
+      state.club=data.club||{name:"",crest:null};
+      state.match=data.match||{rival:"",date:"",time:"",stadium:""};
+      state.confirmed=Array.isArray(data.confirmed)?data.confirmed:[];
       if(Array.isArray(data.plays)){ state.plays=data.plays; savePlaysToStorage(); }
       state.selToken=null;
       render();
@@ -328,8 +412,12 @@ function mkPlayers(){
 let state={
   tab:"squad",players:mkPlayers(),tokens:[],modal:null,search:"",formation:"4-4-2",selToken:null,
   plays:loadPlaysFromStorage(),
-  drawings:[], drawMode:false, drawTool:"arrow", drawColor:DRAW_COLORS[1]
+  drawings:[], drawMode:false, drawTool:"arrow", drawColor:DRAW_COLORS[1],
+  club:{name:"",crest:null},
+  match:{rival:"",date:"",time:"",stadium:""},
+  confirmed:[]
 };
+let lastSavedLabel="";
 
 // ─── INIT: load saved data ───────────────────────────────────
 const savedAt=loadSession();
@@ -366,6 +454,15 @@ function avatarHTML(p,size=44){
 // ─── RENDER ──────────────────────────────────────────────────
 function render(){
   const root=document.getElementById("root");
+  // Como render() reconstruye todo el árbol del DOM, un input que se estaba
+  // editando (nombre del club, buscador, etc.) perdería el foco a cada
+  // tecla. Guardamos qué elemento y qué posición del cursor tenía, y lo
+  // restauramos al final, para poder escribir seguido sin cortes.
+  const active=document.activeElement;
+  const activeId=(active && active.id) ? active.id : null;
+  const selStart=(active && typeof active.selectionStart==="number") ? active.selectionStart : null;
+  const selEnd=(active && typeof active.selectionEnd==="number") ? active.selectionEnd : null;
+
   root.innerHTML="";
   const wrap=document.createElement("div");
   wrap.style.cssText="min-height:100vh;background:#07101f;padding-bottom:70px;";
@@ -374,12 +471,10 @@ function render(){
   const hdr=document.createElement("div");
   hdr.style.cssText="background:linear-gradient(135deg,#0a1525,#0d2040);border-bottom:1px solid rgba(255,255,255,.06);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50;box-shadow:0 4px 24px rgba(0,0,0,.6);";
   
-  // last saved indicator
-  let savedLabel="";
-  try{
-    const raw=localStorage.getItem(STORAGE_KEY);
-    if(raw){const d=JSON.parse(raw);if(d.savedAt) savedLabel=`<div style="font-size:8px;color:#475569;font-family:'Barlow Condensed',sans-serif;letter-spacing:.5px;margin-top:1px;">💾 ${d.savedAt}</div>`;}
-  }catch(e){}
+  // last saved indicator (autoguardado)
+  const savedLabel=lastSavedLabel
+    ?`<div id="saved-indicator" style="font-size:8px;color:#475569;font-family:'Barlow Condensed',sans-serif;letter-spacing:.5px;margin-top:1px;">💾 ${lastSavedLabel}</div>`
+    :`<div id="saved-indicator" style="font-size:8px;color:#475569;font-family:'Barlow Condensed',sans-serif;letter-spacing:.5px;margin-top:1px;"></div>`;
 
   hdr.innerHTML=`
     <div style="display:flex;align-items:center;gap:10px;">
@@ -396,7 +491,7 @@ function render(){
   // ── Tabs
   const tabs=document.createElement("div");
   tabs.style.cssText="display:flex;border-bottom:1px solid rgba(255,255,255,.06);";
-  [{id:"squad",label:"👥  PLANTILLA"},{id:"board",label:"📋  PIZARRA"}].forEach(t=>{
+  [{id:"squad",label:"👥  PLANTILLA"},{id:"board",label:"📋  PIZARRA"},{id:"confirmados",label:"📢  CONFIRMADOS"}].forEach(t=>{
     const btn=document.createElement("button");
     btn.className="tab-btn"+(state.tab===t.id?" active":"");
     btn.textContent=t.label;
@@ -409,6 +504,7 @@ function render(){
   const content=document.createElement("div");
   content.style.cssText="padding:14px 14px 20px;max-width:860px;margin:0 auto;";
   if(state.tab==="squad") renderSquad(content);
+  else if(state.tab==="confirmados") renderConfirmados(content);
   else renderBoard(content);
   wrap.appendChild(content);
 
@@ -417,6 +513,22 @@ function render(){
     wrap.appendChild(state.modal.kind==="plays" ? renderPlaysModal() : renderModal());
   }
   root.appendChild(wrap);
+
+  // Restaura el foco/cursor del input que se estaba editando (ver nota arriba)
+  if(activeId){
+    const el=document.getElementById(activeId);
+    if(el){
+      el.focus();
+      if(selStart!==null && el.setSelectionRange){
+        try{ el.setSelectionRange(selStart,selEnd); }catch(e){}
+      }
+    }
+  }
+
+  // Autoguardado silencioso: cualquier mutación de datos pasa por render(),
+  // así que basta con dispararlo desde aquí (con debounce) para no perder
+  // cambios aunque se te olvide tocar "GUARDAR SESIÓN".
+  scheduleAutoSave();
 }
 
 // ─── SQUAD ───────────────────────────────────────────────────
@@ -477,16 +589,256 @@ function renderSquad(container){
     delBtn.className="ibtn"; delBtn.style.cssText="background:rgba(239,68,68,.1);color:#ef4444;";
     delBtn.textContent="✕";
     delBtn.addEventListener("click",()=>{
-      if(!confirm(`¿Eliminar a ${p.name}?`)) return;
-      state.players=state.players.filter(x=>x.id!==p.id);
-      state.tokens=state.tokens.filter(t=>t.pid!==p.id);
-      render();
+      showConfirmModal({
+        icon:"👤",
+        title:"¿Eliminar jugador?",
+        message:`Se eliminará a "${p.name}" de la plantilla, de la cancha y de la convocatoria.`,
+        onConfirm:()=>{
+          state.players=state.players.filter(x=>x.id!==p.id);
+          state.tokens=state.tokens.filter(t=>t.pid!==p.id);
+          state.confirmed=state.confirmed.filter(id=>id!==p.id);
+          render();
+        }
+      });
     });
     btns.appendChild(editBtn); btns.appendChild(delBtn);
     row.appendChild(btns);
     list.appendChild(row);
   });
   container.appendChild(list);
+}
+
+// ─── CONFIRMADOS / CONVOCATORIA ────────────────────────────────
+function toggleConfirmed(pid){
+  const idx=state.confirmed.indexOf(pid);
+  if(idx===-1) state.confirmed.push(pid);
+  else state.confirmed.splice(idx,1);
+  render();
+}
+
+function posOrderCode(code){
+  const order={POR:0,DEF:1,MED:2,DEL:3};
+  return code in order ? order[code] : 4;
+}
+
+function confirmedPlayersSorted(){
+  return state.confirmed
+    .map(id=>getPlayer(id))
+    .filter(Boolean)
+    .sort((a,b)=>{
+      const oa=posOrderCode(a.position), ob=posOrderCode(b.position);
+      return oa!==ob ? oa-ob : (a.number||0)-(b.number||0);
+    });
+}
+
+function renderConfirmados(container){
+  // ── Datos del club y del partido
+  const setupBox=document.createElement("div");
+  setupBox.style.cssText="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:16px;padding:16px;margin-bottom:16px;";
+  const setupTitle=document.createElement("div");
+  setupTitle.style.cssText="color:#475569;font-size:10px;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px;text-transform:uppercase;margin-bottom:12px;";
+  setupTitle.textContent="🏷️ Datos del partido";
+  setupBox.appendChild(setupTitle);
+
+  const crestRow=document.createElement("div");
+  crestRow.style.cssText="display:flex;gap:12px;align-items:flex-start;margin-bottom:8px;";
+  const crestWrap=document.createElement("div");
+  crestWrap.style.cssText=`width:56px;height:56px;border-radius:50%;border:2.5px dashed #4ade80;cursor:pointer;overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:${state.club.crest?"transparent":"rgba(74,222,128,.08)"};`;
+  crestWrap.innerHTML=state.club.crest
+    ? `<img src="${state.club.crest}" style="width:100%;height:100%;object-fit:cover;" alt=""/>`
+    : `<span style="font-size:22px;">🛡️</span>`;
+  const crestFileInput=document.createElement("input");
+  crestFileInput.type="file"; crestFileInput.accept="image/*"; crestFileInput.style.display="none";
+  crestFileInput.addEventListener("change", e=>{
+    const f=e.target.files[0]; if(!f) return;
+    const reader=new FileReader();
+    reader.onload=async ev=>{
+      state.club.crest=await compressPhoto(ev.target.result,300);
+      render();
+    };
+    reader.readAsDataURL(f);
+  });
+  crestWrap.addEventListener("click",()=>crestFileInput.click());
+  crestRow.appendChild(crestWrap); crestRow.appendChild(crestFileInput);
+
+  const clubNameWrap=mkInput("NOMBRE DEL CLUB","text",state.club.name,"Ej. Deportivo LSMI","_clubname");
+  clubNameWrap.style.flex="1"; clubNameWrap.style.marginBottom="0";
+  clubNameWrap.querySelector("input").addEventListener("input",e=>{state.club.name=e.target.value; render();});
+  crestRow.appendChild(clubNameWrap);
+  setupBox.appendChild(crestRow);
+
+  if(state.club.crest){
+    const rmCrest=document.createElement("button");
+    rmCrest.textContent="Quitar escudo";
+    rmCrest.style.cssText="background:rgba(239,68,68,.1);border:none;border-radius:8px;color:#ef4444;cursor:pointer;font-size:11px;padding:3px 10px;font-family:'Barlow Condensed',sans-serif;margin-bottom:14px;";
+    rmCrest.addEventListener("click",()=>{state.club.crest=null;render();});
+    setupBox.appendChild(rmCrest);
+  }
+
+  const rivalWrap=mkInput("RIVAL","text",state.match.rival,"Nombre del equipo rival","_match_rival");
+  rivalWrap.querySelector("input").addEventListener("input",e=>{state.match.rival=e.target.value; render();});
+  setupBox.appendChild(rivalWrap);
+
+  const gridRow=document.createElement("div");
+  gridRow.style.cssText="display:grid;grid-template-columns:1fr 1fr;gap:10px;";
+  const dateWrap=mkInput("FECHA","date",state.match.date,"","_match_date");
+  dateWrap.querySelector("input").addEventListener("input",e=>{state.match.date=e.target.value; render();});
+  const timeWrap=mkInput("HORA","time",state.match.time,"","_match_time");
+  timeWrap.querySelector("input").addEventListener("input",e=>{state.match.time=e.target.value; render();});
+  gridRow.appendChild(dateWrap); gridRow.appendChild(timeWrap);
+  setupBox.appendChild(gridRow);
+
+  const stadiumWrap=mkInput("ESTADIO / CANCHA","text",state.match.stadium,"Ej. Estadio Municipal","_match_stadium");
+  stadiumWrap.style.marginBottom="0";
+  stadiumWrap.querySelector("input").addEventListener("input",e=>{state.match.stadium=e.target.value; render();});
+  setupBox.appendChild(stadiumWrap);
+
+  container.appendChild(setupBox);
+
+  // ── Tarjeta exportable (imagen tipo "convocatoria oficial")
+  const confirmedList=confirmedPlayersSorted();
+  const card=document.createElement("div");
+  card.id="convocatoria-card";
+  card.style.cssText="position:relative;border-radius:20px;overflow:hidden;background:linear-gradient(160deg,#0d1a30 0%,#07101f 55%,#0a1525 100%);border:1px solid rgba(255,255,255,.08);padding:22px 18px 20px;margin-bottom:14px;box-shadow:0 20px 50px rgba(0,0,0,.5);";
+  card.innerHTML=`<div style="position:absolute;top:0;left:0;right:0;height:5px;background:linear-gradient(90deg,#16a34a,#4ade80,#16a34a);"></div>`;
+
+  const cHdr=document.createElement("div");
+  cHdr.style.cssText="display:flex;align-items:center;gap:12px;margin-bottom:16px;";
+  cHdr.innerHTML=`
+    <div style="width:52px;height:52px;border-radius:50%;overflow:hidden;flex-shrink:0;border:2px solid rgba(74,222,128,.5);display:flex;align-items:center;justify-content:center;background:rgba(74,222,128,.08);">
+      ${state.club.crest?`<img src="${state.club.crest}" style="width:100%;height:100%;object-fit:cover;" alt=""/>`:`<span style="font-size:24px;">🛡️</span>`}
+    </div>
+    <div style="flex:1;min-width:0;">
+      <div style="font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:19px;color:#f1f5f9;letter-spacing:.5px;line-height:1.15;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${state.club.name||"MI EQUIPO"}</div>
+      <div style="font-size:10px;color:#4ade80;font-family:'Barlow Condensed',sans-serif;letter-spacing:2px;font-weight:800;">CONVOCATORIA OFICIAL</div>
+    </div>
+    <div style="background:rgba(74,222,128,.12);border:1px solid rgba(74,222,128,.3);border-radius:14px;padding:6px 12px;text-align:center;flex-shrink:0;">
+      <div style="font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:18px;color:#4ade80;line-height:1;">${confirmedList.length}</div>
+      <div style="font-size:7px;color:#4ade80;font-family:'Barlow Condensed',sans-serif;letter-spacing:.5px;">CONFIRMADOS</div>
+    </div>`;
+  card.appendChild(cHdr);
+
+  if(state.match.rival){
+    const vsBox=document.createElement("div");
+    vsBox.style.cssText="text-align:center;margin-bottom:14px;";
+    vsBox.innerHTML=`<div style="font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:15px;color:#f1f5f9;letter-spacing:1px;">${(state.club.name||"MI EQUIPO").toUpperCase()} <span style="color:#4ade80;">VS</span> ${state.match.rival.toUpperCase()}</div>`;
+    card.appendChild(vsBox);
+  }
+
+  if(state.match.date||state.match.time||state.match.stadium){
+    const metaRow=document.createElement("div");
+    metaRow.style.cssText="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid rgba(255,255,255,.08);";
+    const chips=[];
+    if(state.match.date){
+      const d=new Date(state.match.date+"T00:00:00");
+      chips.push(["📅", isNaN(d)?state.match.date:d.toLocaleDateString("es",{day:"2-digit",month:"short",year:"numeric"})]);
+    }
+    if(state.match.time) chips.push(["🕐",state.match.time]);
+    if(state.match.stadium) chips.push(["🏟️",state.match.stadium]);
+    metaRow.innerHTML=chips.map(([icon,txt])=>`
+      <div style="background:rgba(255,255,255,.05);border-radius:10px;padding:6px 10px;display:flex;align-items:center;gap:5px;">
+        <span style="font-size:12px;">${icon}</span>
+        <span style="font-size:11px;color:#cbd5e1;font-family:'Barlow Condensed',sans-serif;font-weight:700;">${txt}</span>
+      </div>`).join("");
+    card.appendChild(metaRow);
+  }
+
+  if(confirmedList.length===0){
+    const empty=document.createElement("div");
+    empty.style.cssText="text-align:center;padding:24px 0;color:#475569;font-family:'Barlow Condensed',sans-serif;font-size:13px;line-height:1.5;";
+    empty.innerHTML=`<div style="font-size:30px;margin-bottom:6px;">📢</div>Marca jugadores como confirmados abajo<br>para armar la lista.`;
+    card.appendChild(empty);
+  } else {
+    const grid=document.createElement("div");
+    grid.style.cssText="display:grid;grid-template-columns:repeat(3,1fr);gap:14px 8px;";
+    confirmedList.forEach(p=>{
+      const cell=document.createElement("div");
+      cell.style.cssText="display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center;";
+      cell.innerHTML=avatarHTML(p,52)+`
+        <div style="font-size:10.5px;font-weight:700;color:#f1f5f9;font-family:'Barlow Condensed',sans-serif;max-width:74px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.name}</div>
+        <div style="font-size:8.5px;color:#4ade80;font-family:'Barlow Condensed',sans-serif;letter-spacing:.5px;font-weight:800;">#${p.number}${p.position?" · "+p.position:""}</div>`;
+      grid.appendChild(cell);
+    });
+    card.appendChild(grid);
+  }
+
+  const footer=document.createElement("div");
+  footer.style.cssText="text-align:center;margin-top:18px;font-size:8px;color:rgba(148,163,184,.35);font-family:'Barlow Condensed',sans-serif;letter-spacing:1px;";
+  footer.textContent="⚽ PIZARRA TÁCTICA PRO";
+  card.appendChild(footer);
+
+  container.appendChild(card);
+
+  const exportBtn=document.createElement("button");
+  exportBtn.style.cssText=`width:100%;padding:13px 0;border-radius:14px;border:none;font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:14px;letter-spacing:1px;margin-bottom:20px;
+    cursor:${confirmedList.length===0?"not-allowed":"pointer"};opacity:${confirmedList.length===0?".5":"1"};
+    background:linear-gradient(135deg,#4ade80,#16a34a);color:#000;box-shadow:0 4px 20px rgba(74,222,128,.3);`;
+  exportBtn.textContent="🖼️  EXPORTAR CONVOCATORIA";
+  exportBtn.disabled=confirmedList.length===0;
+  exportBtn.addEventListener("click",exportConvocatoriaImage);
+  container.appendChild(exportBtn);
+
+  // ── Selección de convocados
+  const selTitle=document.createElement("div");
+  selTitle.style.cssText="color:#475569;font-size:10px;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px;";
+  selTitle.textContent="Toca a un jugador para confirmar / quitar";
+  container.appendChild(selTitle);
+
+  if(state.players.length===0){
+    const empty=document.createElement("div");
+    empty.style.cssText="text-align:center;padding:30px 0;color:#475569;font-family:'Barlow Condensed',sans-serif;font-size:14px;";
+    empty.textContent="Agrega jugadores en la pestaña Plantilla primero.";
+    container.appendChild(empty);
+    return;
+  }
+
+  const list=document.createElement("div");
+  state.players.slice().sort((a,b)=>{
+    const ca=state.confirmed.includes(a.id), cb=state.confirmed.includes(b.id);
+    if(ca!==cb) return ca?-1:1;
+    return a.name.localeCompare(b.name);
+  }).forEach(p=>{
+    const isConfirmed=state.confirmed.includes(p.id);
+    const row=document.createElement("div");
+    row.className="prow";
+    row.style.cursor="pointer";
+    if(isConfirmed){ row.style.background="rgba(74,222,128,.06)"; row.style.borderColor="rgba(74,222,128,.25)"; }
+    row.innerHTML=avatarHTML(p,42);
+    const info=document.createElement("div");
+    info.style.cssText="flex:1;min-width:0;";
+    info.innerHTML=`<div style="font-weight:700;font-size:13.5px;color:#f1f5f9;font-family:'Barlow Condensed',sans-serif;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.name}</div><div style="font-size:11px;color:#475569;font-family:'Barlow Condensed',sans-serif;">#${p.number}${p.position?" · "+p.position:""}</div>`;
+    row.appendChild(info);
+    const check=document.createElement("div");
+    check.style.cssText=`width:26px;height:26px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:13px;
+      background:${isConfirmed?"linear-gradient(135deg,#4ade80,#16a34a)":"rgba(255,255,255,.06)"};
+      border:1px solid ${isConfirmed?"transparent":"rgba(255,255,255,.15)"};color:${isConfirmed?"#000":"#475569"};`;
+    check.textContent=isConfirmed?"✓":"";
+    row.appendChild(check);
+    row.addEventListener("click",()=>toggleConfirmed(p.id));
+    list.appendChild(row);
+  });
+  container.appendChild(list);
+}
+
+function exportConvocatoriaImage(){
+  const target=document.getElementById("convocatoria-card");
+  if(!target || typeof html2canvas==="undefined"){
+    showToast("❌ No se pudo generar la imagen","err");
+    return;
+  }
+  showToast("⏳ Generando imagen…","ok",1800);
+  html2canvas(target,{backgroundColor:"#07101f",scale:2,useCORS:true}).then(canvas=>{
+    canvas.toBlob(blob=>{
+      if(!blob){showToast("❌ No se pudo generar la imagen","err");return;}
+      const fileName="convocatoria_"+new Date().toISOString().slice(0,10)+".png";
+      const file=(typeof File!=="undefined")?new File([blob],fileName,{type:"image/png"}):null;
+      if(file && navigator.canShare && navigator.canShare({files:[file]})){
+        navigator.share({files:[file],title:"Convocatoria"}).catch(()=>downloadBlob(blob,fileName));
+      } else {
+        downloadBlob(blob,fileName);
+      }
+    },"image/png");
+  }).catch(()=>showToast("❌ No se pudo generar la imagen","err"));
 }
 
 // ─── BOARD ───────────────────────────────────────────────────
@@ -1086,10 +1438,16 @@ function renderPlaysModal(){
       delBtn.className="ibtn"; delBtn.style.cssText="background:rgba(239,68,68,.1);color:#ef4444;";
       delBtn.textContent="✕";
       delBtn.addEventListener("click",()=>{
-        if(!confirm(`¿Eliminar la jugada "${play.name}"?`)) return;
-        state.plays=state.plays.filter(p=>p.id!==play.id);
-        savePlaysToStorage();
-        render();
+        showConfirmModal({
+          icon:"📋",
+          title:"¿Eliminar jugada?",
+          message:`Se eliminará "${play.name}" de tu librería de jugadas.`,
+          onConfirm:()=>{
+            state.plays=state.plays.filter(p=>p.id!==play.id);
+            savePlaysToStorage();
+            render();
+          }
+        });
       });
       row.appendChild(loadBtn); row.appendChild(delBtn);
       box.appendChild(row);
@@ -1118,6 +1476,12 @@ render();
 if(savedAt){
   setTimeout(()=>showToast("📂 Sesión cargada · "+savedAt,"ok"),400);
 }
+
+// Respaldo extra: si se cierra la pestaña justo dentro de los 500ms del
+// debounce del autoguardado, esto asegura que igual quede guardado.
+window.addEventListener("pagehide", ()=>{
+  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(buildSaveData())); }catch(e){}
+});
 </script>
 </body>
 </html>
