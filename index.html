@@ -638,31 +638,25 @@ function confirmedPlayersSorted(){
 // Colores neón por categoría de posición: se usan en el número, el nombre
 // y la etiqueta de posición de cada celda, para que se distingan a simple
 // vista (arquero, defensa, mediocampo, delantera).
-const POSITION_NEON={POR:"#fbbf24",DEF:"#38bdf8",MED:"#facc15",DEL:"#39ff14"};
+const POSITION_NEON={POR:"#fbbf24",DEF:"#ff1030",MED:"#ff1030",DEL:"#ff1030"};
 function posNeon(pos){ return POSITION_NEON[pos]||"#ff2fd8"; }
 
-// Texto con doble filo: relleno de color, un contorno blanco pegado a la
-// letra, y un contorno negro más ancho por fuera de ese blanco. Se logra
-// apilando 3 copias del mismo texto (negro más ancho detrás, blanco
-// mediano encima, y el relleno de color al frente).
-function outlinedText(text,baseCss,fillColor,whiteW,blackW){
+// Texto con filo: relleno blanco y un contorno negro alrededor de la letra
+// (se logra apilando el mismo texto dos veces: negro con contorno grueso
+// detrás, y el relleno blanco encima).
+function outlinedText(text,baseCss,fillColor,blackW){
   const wrap=document.createElement("div");
   wrap.style.cssText="position:relative;display:inline-block;";
   const black=document.createElement("div");
   black.style.cssText=`${baseCss}color:transparent;-webkit-text-stroke:${blackW}px #000;`;
   black.textContent=text;
   wrap.appendChild(black);
-  const white=document.createElement("div");
-  white.style.cssText=`${baseCss}position:absolute;inset:0;color:transparent;-webkit-text-stroke:${whiteW}px #fff;`;
-  white.textContent=text;
-  wrap.appendChild(white);
   const fill=document.createElement("div");
   fill.style.cssText=`${baseCss}position:absolute;inset:0;color:${fillColor};`;
   fill.textContent=text;
   wrap.appendChild(fill);
   return wrap;
 }
-const NEON_RED="#ff1030";
 
 // Celda tipo póster: foto del jugador a toda celda, número grande pegado a
 // la esquina, nombre en vertical sobre el borde izquierdo — ambos en rojo
@@ -689,14 +683,14 @@ function buildPlayerCell(p){
 
   const numWrap=document.createElement("div");
   numWrap.style.cssText="position:absolute;right:-3px;top:-11px;";
-  const numBase="font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:50px;line-height:.8;white-space:nowrap;";
-  numWrap.appendChild(outlinedText(String(p.number),numBase,NEON_RED,3,6));
+  const numBase="font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:35px;line-height:.8;white-space:nowrap;";
+  numWrap.appendChild(outlinedText(String(p.number),numBase,"#ffffff",4));
   cell.appendChild(numWrap);
 
   const nameWrap=document.createElement("div");
-  nameWrap.style.cssText="position:absolute;left:10px;bottom:10px;transform-origin:0% 100%;transform:rotate(-90deg);";
-  const nameBase="font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:12px;letter-spacing:1.5px;white-space:nowrap;";
-  nameWrap.appendChild(outlinedText(p.name.toUpperCase(),nameBase,NEON_RED,1.5,3));
+  nameWrap.style.cssText="position:absolute;left:16px;bottom:10px;transform-origin:0% 100%;transform:rotate(-90deg);";
+  const nameBase="font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:9px;letter-spacing:1.5px;white-space:nowrap;";
+  nameWrap.appendChild(outlinedText(p.name.toUpperCase(),nameBase,"#ffffff",2));
   cell.appendChild(nameWrap);
 
   if(p.position){
