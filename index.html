@@ -662,9 +662,10 @@ function outlinedText(text,baseCss,fillColor,blackW){
   return wrap;
 }
 
-// Celda tipo póster: foto del jugador a toda celda, número blanco con filo
-// negro pegado a la esquina superior, nombre horizontal y blanco al pie de
-// la foto, y la posición arriba a la izquierda con su color de categoría.
+// Celda tipo póster: foto del jugador a toda celda. Abajo a la izquierda,
+// el número grande; justo debajo, la posición (horizontal, con su color de
+// categoría) y el nombre al lado, en la misma línea — igual a la
+// referencia que armaste.
 function buildPlayerCell(p){
   const cell=document.createElement("div");
   cell.style.cssText=`position:relative;overflow:hidden;background:${p.photo?"#0b1220":`linear-gradient(160deg, ${p.color}, #0b1220)`};border:1px solid rgba(0,0,0,.5);`;
@@ -684,28 +685,30 @@ function buildPlayerCell(p){
   cell.appendChild(shade);
 
   const numWrap=document.createElement("div");
-  numWrap.style.cssText="position:absolute;right:-3px;top:-5px;";
-  const numBase="font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:35px;line-height:.8;white-space:nowrap;";
-  numWrap.appendChild(outlinedText(String(p.number),numBase,"#ffffff",4));
+  numWrap.style.cssText="position:absolute;left:6px;bottom:30px;";
+  const numBase="font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:34px;line-height:.8;white-space:nowrap;";
+  numWrap.appendChild(outlinedText(String(p.number),numBase,"#ffffff",3));
   cell.appendChild(numWrap);
 
-  const nameEl=document.createElement("div");
-  nameEl.style.cssText="position:absolute;left:4px;right:4px;bottom:6px;text-align:center;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:7.5px;letter-spacing:.5px;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
-  nameEl.textContent=p.name.toUpperCase();
-  cell.appendChild(nameEl);
-
+  const bottomRow=document.createElement("div");
+  bottomRow.style.cssText="position:absolute;left:6px;right:6px;bottom:6px;display:flex;align-items:center;gap:6px;";
   if(p.position){
     const st=posStyle(p.position);
     const posEl=document.createElement("div");
-    posEl.style.cssText=`position:absolute;top:6px;left:6px;transform-origin:0% 0%;transform:rotate(90deg);white-space:nowrap;font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:9px;letter-spacing:1px;color:${st.text};background:${st.bg};padding:2px 6px;border-radius:4px;box-shadow:0 2px 6px rgba(0,0,0,.5);`;
+    posEl.style.cssText=`flex-shrink:0;font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:9px;letter-spacing:1px;color:${st.text};background:${st.bg};padding:3px 7px;border-radius:4px;box-shadow:0 2px 6px rgba(0,0,0,.5);`;
     posEl.textContent=p.position;
-    cell.appendChild(posEl);
+    bottomRow.appendChild(posEl);
   }
+  const nameEl=document.createElement("div");
+  nameEl.style.cssText="font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:12px;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.85);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;";
+  nameEl.textContent=p.name;
+  bottomRow.appendChild(nameEl);
+  cell.appendChild(bottomRow);
 
   if(p.specialCaptain){
-    cell.insertAdjacentHTML("beforeend",`<div style="position:absolute;bottom:6px;right:6px;width:18px;height:18px;border-radius:50%;background:#f1f5f9;display:flex;align-items:center;justify-content:center;font-size:10px;box-shadow:0 2px 6px rgba(0,0,0,.6);">🕊️</div>`);
+    cell.insertAdjacentHTML("beforeend",`<div style="position:absolute;top:6px;right:6px;width:18px;height:18px;border-radius:50%;background:#f1f5f9;display:flex;align-items:center;justify-content:center;font-size:10px;box-shadow:0 2px 6px rgba(0,0,0,.6);">🕊️</div>`);
   } else if(p.captain){
-    cell.insertAdjacentHTML("beforeend",`<div style="position:absolute;bottom:6px;right:6px;width:18px;height:18px;border-radius:50%;background:#fbbf24;color:#000;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:900;box-shadow:0 2px 6px rgba(0,0,0,.6);font-family:'Barlow Condensed',sans-serif;">C</div>`);
+    cell.insertAdjacentHTML("beforeend",`<div style="position:absolute;top:6px;right:6px;width:18px;height:18px;border-radius:50%;background:#fbbf24;color:#000;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:900;box-shadow:0 2px 6px rgba(0,0,0,.6);font-family:'Barlow Condensed',sans-serif;">C</div>`);
   }
   return cell;
 }
