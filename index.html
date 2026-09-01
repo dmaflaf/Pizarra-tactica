@@ -684,30 +684,33 @@ function buildPlayerCell(p){
   shade.style.cssText="position:absolute;inset:0;background:linear-gradient(to top, rgba(0,0,0,.82) 0%, rgba(0,0,0,.15) 40%, transparent 62%),linear-gradient(to right, rgba(0,0,0,.55) 0%, transparent 22%);";
   cell.appendChild(shade);
 
+  // Todo pegado al pie de la foto para despejar el rostro: número y
+  // posición apilados a la izquierda, nombre a la derecha, alineados por
+  // abajo (mismos tamaños de antes, solo cambia la ubicación).
+  const bottomWrap=document.createElement("div");
+  bottomWrap.style.cssText="position:absolute;left:5px;right:5px;bottom:5px;display:flex;align-items:flex-end;justify-content:space-between;gap:4px;";
+
+  const leftCol=document.createElement("div");
+  leftCol.style.cssText="display:flex;flex-direction:column;align-items:flex-start;gap:2px;flex-shrink:0;";
   const numWrap=document.createElement("div");
-  numWrap.style.cssText="position:absolute;left:5px;bottom:30px;";
   const numBase="font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:22px;line-height:.8;white-space:nowrap;";
   numWrap.appendChild(outlinedText(String(p.number),numBase,"#ffffff",2.5));
-  cell.appendChild(numWrap);
-
-  // Posición arriba y nombre debajo (apilados, no en la misma fila): cada
-  // uno usa todo el ancho de la celda, así el nombre no se corta a una
-  // sola letra en celdas angostas. min-width:0 evita que flexbox ignore
-  // el ancho fijo y deje que el texto se desborde en vez de recortarse.
-  const bottomRow=document.createElement("div");
-  bottomRow.style.cssText="position:absolute;left:5px;right:5px;bottom:5px;display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:0;";
+  leftCol.appendChild(numWrap);
   if(p.position){
     const st=posStyle(p.position);
     const posEl=document.createElement("div");
-    posEl.style.cssText=`flex-shrink:0;font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:6.5px;letter-spacing:.5px;color:${st.text};background:${st.bg};padding:1.5px 4px;border-radius:3px;box-shadow:0 1px 4px rgba(0,0,0,.5);`;
+    posEl.style.cssText=`font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:6.5px;letter-spacing:.5px;color:${st.text};background:${st.bg};padding:1.5px 4px;border-radius:3px;box-shadow:0 1px 4px rgba(0,0,0,.5);`;
     posEl.textContent=p.position;
-    bottomRow.appendChild(posEl);
+    leftCol.appendChild(posEl);
   }
+  bottomWrap.appendChild(leftCol);
+
   const nameEl=document.createElement("div");
-  nameEl.style.cssText="font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:7.5px;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.9);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;min-width:0;display:block;";
+  nameEl.style.cssText="font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:7.5px;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.9);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;text-align:right;";
   nameEl.textContent=p.name;
-  bottomRow.appendChild(nameEl);
-  cell.appendChild(bottomRow);
+  bottomWrap.appendChild(nameEl);
+
+  cell.appendChild(bottomWrap);
 
   if(p.specialCaptain){
     cell.insertAdjacentHTML("beforeend",`<div style="position:absolute;top:6px;right:6px;width:18px;height:18px;border-radius:50%;background:#f1f5f9;display:flex;align-items:center;justify-content:center;font-size:10px;box-shadow:0 2px 6px rgba(0,0,0,.6);">🕊️</div>`);
