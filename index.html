@@ -635,31 +635,73 @@ function confirmedPlayersSorted(){
 // por línea de posición (arqueros abajo, luego defensas, medios y
 // delanteros hacia arriba) y reparte el ancho entre los que haya en cada
 // línea, así entran los 22 (o los que sean) sin dejar a nadie afuera.
-// Celda tipo póster: foto del jugador a toda celda, número gigante detrás,
-// nombre en vertical sobre el borde izquierdo, posición abajo. Si el
-// jugador no tiene foto cargada, usa su color de camiseta como fondo.
+// Colores neón por categoría de posición: se usan en el número, el nombre
+// y la etiqueta de posición de cada celda, para que se distingan a simple
+// vista (arquero, defensa, mediocampo, delantera).
+const POSITION_NEON={POR:"#fbbf24",DEF:"#38bdf8",MED:"#facc15",DEL:"#39ff14"};
+function posNeon(pos){ return POSITION_NEON[pos]||"#ff2fd8"; }
+
+// Texto con doble filo: relleno de color, un contorno blanco pegado a la
+// letra, y un contorno negro más ancho por fuera de ese blanco. Se logra
+// apilando 3 copias del mismo texto (negro más ancho detrás, blanco
+// mediano encima, y el relleno de color al frente).
+function outlinedText(text,baseCss,fillColor,whiteW,blackW){
+  const wrap=document.createElement("div");
+  wrap.style.cssText="position:relative;display:inline-block;";
+  const black=document.createElement("div");
+  black.style.cssText=`${baseCss}color:transparent;-webkit-text-stroke:${blackW}px #000;`;
+  black.textContent=text;
+  wrap.appendChild(black);
+  const white=document.createElement("div");
+  white.style.cssText=`${baseCss}position:absolute;inset:0;color:transparent;-webkit-text-stroke:${whiteW}px #fff;`;
+  white.textContent=text;
+  wrap.appendChild(white);
+  const fill=document.createElement("div");
+  fill.style.cssText=`${baseCss}position:absolute;inset:0;color:${fillColor};`;
+  fill.textContent=text;
+  wrap.appendChild(fill);
+  return wrap;
+}
+const NEON_RED="#ff1030";
+
+// Celda tipo póster: foto del jugador a toda celda, número grande pegado a
+// la esquina, nombre en vertical sobre el borde izquierdo — ambos en rojo
+// neón con filo blanco y refilo negro — y la posición abajo, coloreada
+// según la categoría (POR/DEF/MED/DEL).
 function buildPlayerCell(p){
+  const neon=posNeon(p.position);
   const cell=document.createElement("div");
-  const bg=p.photo?`url('${p.photo}') center/cover no-repeat`:`linear-gradient(160deg, ${p.color}, #0b1220)`;
-  cell.style.cssText=`position:relative;aspect-ratio:3/4;overflow:hidden;background:${bg};border:1px solid rgba(0,0,0,.5);`;
+  cell.style.cssText=`position:relative;overflow:hidden;background:${p.photo?"#0b1220":`linear-gradient(160deg, ${p.color}, #0b1220)`};border:1px solid rgba(0,0,0,.5);`;
+
+  if(p.photo){
+    // <img> con object-fit:cover en vez de background-image: recorta para
+    // llenar la celda sin estirar ni deformar la foto, sea cual sea su
+    // proporción original o la forma (más ancha o más alta) que tenga la celda.
+    const img=document.createElement("img");
+    img.src=p.photo;
+    img.style.cssText="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center;display:block;";
+    cell.appendChild(img);
+  }
 
   const shade=document.createElement("div");
-  shade.style.cssText="position:absolute;inset:0;background:linear-gradient(to top, rgba(0,0,0,.8) 0%, rgba(0,0,0,.1) 42%, transparent 65%);";
+  shade.style.cssText="position:absolute;inset:0;background:linear-gradient(to top, rgba(0,0,0,.82) 0%, rgba(0,0,0,.15) 40%, transparent 62%),linear-gradient(to right, rgba(0,0,0,.55) 0%, transparent 22%);";
   cell.appendChild(shade);
 
-  const num=document.createElement("div");
-  num.style.cssText="position:absolute;right:-3px;top:-9px;font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:42px;line-height:.8;letter-spacing:-1.5px;color:rgba(255,255,255,.95);text-shadow:-1.5px -1.5px 0 rgba(0,0,0,.55),1.5px -1.5px 0 rgba(0,0,0,.55),-1.5px 1.5px 0 rgba(0,0,0,.55),1.5px 1.5px 0 rgba(0,0,0,.55);";
-  num.textContent=p.number;
-  cell.appendChild(num);
+  const numWrap=document.createElement("div");
+  numWrap.style.cssText="position:absolute;right:-3px;top:-11px;";
+  const numBase="font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:50px;line-height:.8;white-space:nowrap;";
+  numWrap.appendChild(outlinedText(String(p.number),numBase,NEON_RED,3,6));
+  cell.appendChild(numWrap);
 
-  const nameEl=document.createElement("div");
-  nameEl.style.cssText="position:absolute;left:5px;bottom:7px;transform-origin:0% 100%;transform:rotate(-90deg);white-space:nowrap;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:9px;letter-spacing:2px;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.95);";
-  nameEl.textContent=p.name.toUpperCase();
-  cell.appendChild(nameEl);
+  const nameWrap=document.createElement("div");
+  nameWrap.style.cssText="position:absolute;left:10px;bottom:10px;transform-origin:0% 100%;transform:rotate(-90deg);";
+  const nameBase="font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:12px;letter-spacing:1.5px;white-space:nowrap;";
+  nameWrap.appendChild(outlinedText(p.name.toUpperCase(),nameBase,NEON_RED,1.5,3));
+  cell.appendChild(nameWrap);
 
   if(p.position){
     const posEl=document.createElement("div");
-    posEl.style.cssText="position:absolute;right:5px;bottom:5px;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:8px;letter-spacing:1px;color:rgba(255,255,255,.9);background:rgba(0,0,0,.45);padding:2px 6px;border-radius:4px;";
+    posEl.style.cssText=`position:absolute;right:6px;bottom:6px;font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:9px;letter-spacing:1px;color:#000;background:${neon};padding:2px 6px;border-radius:4px;box-shadow:0 2px 6px rgba(0,0,0,.5);`;
     posEl.textContent=p.position;
     cell.appendChild(posEl);
   }
@@ -672,10 +714,13 @@ function buildPlayerCell(p){
   return cell;
 }
 
-// Mosaico de 3 columnas con todos los confirmados, estilo "Starting XI"
+// Mosaico de 5 columnas con todos los confirmados, estilo "Starting XI".
+// Las filas se calculan solas (5 confirmados = 1 fila, 20 = 4 filas, etc.)
+// y ocupan todo el alto disponible dentro del póster.
 function buildConvocatoriaGrid(confirmedList){
+  const rows=Math.max(1,Math.ceil(confirmedList.length/5));
   const grid=document.createElement("div");
-  grid.style.cssText="display:grid;grid-template-columns:repeat(3,1fr);gap:2px;border-radius:12px;overflow:hidden;margin-bottom:16px;box-shadow:0 10px 30px rgba(0,0,0,.5);";
+  grid.style.cssText=`flex:1;display:grid;grid-template-columns:repeat(5,1fr);grid-template-rows:repeat(${rows},1fr);gap:2px;overflow:hidden;`;
   confirmedList.forEach(p=>grid.appendChild(buildPlayerCell(p)));
   return grid;
 }
@@ -747,13 +792,16 @@ function renderConfirmados(container){
   const confirmedList=confirmedPlayersSorted();
 
   // ── Tarjeta exportable (imagen tipo "convocatoria oficial")
+  // aspect-ratio 9/19.5 imita la pantalla de un celular promedio: el póster
+  // ocupa siempre esa proporción completa, sea cual sea la cantidad de
+  // confirmados (la cuadrícula de abajo se estira o achica para llenarla).
   const card=document.createElement("div");
   card.id="convocatoria-card";
-  card.style.cssText="position:relative;border-radius:20px;overflow:hidden;background:linear-gradient(160deg,#0d1a30 0%,#07101f 55%,#0a1525 100%);border:1px solid rgba(255,255,255,.08);padding:22px 18px 20px;margin-bottom:14px;box-shadow:0 20px 50px rgba(0,0,0,.5);";
+  card.style.cssText="position:relative;display:flex;flex-direction:column;aspect-ratio:9/16;width:100%;border-radius:20px;overflow:hidden;background:linear-gradient(160deg,#0d1a30 0%,#07101f 55%,#0a1525 100%);border:1px solid rgba(255,255,255,.08);padding:18px 14px 16px;margin-bottom:14px;box-shadow:0 20px 50px rgba(0,0,0,.5);";
   card.innerHTML=`<div style="position:absolute;top:0;left:0;right:0;height:5px;background:linear-gradient(90deg,#16a34a,#4ade80,#16a34a);"></div>`;
 
   const cHdr=document.createElement("div");
-  cHdr.style.cssText="text-align:center;margin-bottom:16px;";
+  cHdr.style.cssText="text-align:center;margin-bottom:12px;flex-shrink:0;";
   cHdr.innerHTML=`
     <div style="font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:10px;letter-spacing:5px;color:#4ade80;margin-bottom:12px;">CONVOCATORIA OFICIAL</div>
     <div style="width:64px;height:64px;border-radius:50%;overflow:hidden;margin:0 auto 8px;border:2px solid rgba(74,222,128,.5);display:flex;align-items:center;justify-content:center;background:rgba(74,222,128,.08);">
@@ -765,7 +813,7 @@ function renderConfirmados(container){
 
   if(confirmedList.length===0){
     const empty=document.createElement("div");
-    empty.style.cssText="text-align:center;padding:24px 0;color:#475569;font-family:'Barlow Condensed',sans-serif;font-size:13px;line-height:1.5;";
+    empty.style.cssText="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:#475569;font-family:'Barlow Condensed',sans-serif;font-size:13px;line-height:1.5;";
     empty.innerHTML=`<div style="font-size:30px;margin-bottom:6px;">📢</div>Marca jugadores como confirmados abajo<br>para armar la lista.`;
     card.appendChild(empty);
   } else {
@@ -774,7 +822,7 @@ function renderConfirmados(container){
 
   if(state.match.rival||state.match.date||state.match.time||state.match.stadium){
     const banner=document.createElement("div");
-    banner.style.cssText="text-align:center;padding-top:6px;";
+    banner.style.cssText="text-align:center;padding-top:10px;flex-shrink:0;";
     if(state.match.rival){
       banner.innerHTML+=`<div style="font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:16px;color:#f1f5f9;letter-spacing:1px;margin-bottom:6px;">${(state.club.name||"MI EQUIPO").toUpperCase()} <span style="color:#4ade80;">VS</span> ${state.match.rival.toUpperCase()}</div>`;
     }
@@ -799,7 +847,7 @@ function renderConfirmados(container){
   }
 
   const footer=document.createElement("div");
-  footer.style.cssText="text-align:center;margin-top:18px;font-size:8px;color:rgba(148,163,184,.35);font-family:'Barlow Condensed',sans-serif;letter-spacing:1px;";
+  footer.style.cssText="text-align:center;margin-top:10px;font-size:8px;color:rgba(148,163,184,.35);font-family:'Barlow Condensed',sans-serif;letter-spacing:1px;flex-shrink:0;";
   footer.textContent="⚽ PIZARRA TÁCTICA PRO";
   card.appendChild(footer);
 
