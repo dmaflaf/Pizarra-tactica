@@ -685,25 +685,26 @@ function buildPlayerCell(p){
   cell.appendChild(shade);
 
   const numWrap=document.createElement("div");
-  numWrap.style.cssText="position:absolute;left:6px;bottom:40px;";
-  const numBase="font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:32px;line-height:.8;white-space:nowrap;";
-  numWrap.appendChild(outlinedText(String(p.number),numBase,"#ffffff",3));
+  numWrap.style.cssText="position:absolute;left:5px;bottom:30px;";
+  const numBase="font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:22px;line-height:.8;white-space:nowrap;";
+  numWrap.appendChild(outlinedText(String(p.number),numBase,"#ffffff",2.5));
   cell.appendChild(numWrap);
 
   // Posición arriba y nombre debajo (apilados, no en la misma fila): cada
   // uno usa todo el ancho de la celda, así el nombre no se corta a una
-  // sola letra en celdas angostas.
+  // sola letra en celdas angostas. min-width:0 evita que flexbox ignore
+  // el ancho fijo y deje que el texto se desborde en vez de recortarse.
   const bottomRow=document.createElement("div");
-  bottomRow.style.cssText="position:absolute;left:6px;right:6px;bottom:6px;display:flex;flex-direction:column;align-items:flex-start;gap:3px;";
+  bottomRow.style.cssText="position:absolute;left:5px;right:5px;bottom:5px;display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:0;";
   if(p.position){
     const st=posStyle(p.position);
     const posEl=document.createElement("div");
-    posEl.style.cssText=`flex-shrink:0;font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:8.5px;letter-spacing:1px;color:${st.text};background:${st.bg};padding:2px 6px;border-radius:4px;box-shadow:0 2px 6px rgba(0,0,0,.5);`;
+    posEl.style.cssText=`flex-shrink:0;font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:6.5px;letter-spacing:.5px;color:${st.text};background:${st.bg};padding:1.5px 4px;border-radius:3px;box-shadow:0 1px 4px rgba(0,0,0,.5);`;
     posEl.textContent=p.position;
     bottomRow.appendChild(posEl);
   }
   const nameEl=document.createElement("div");
-  nameEl.style.cssText="font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:10px;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.85);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;";
+  nameEl.style.cssText="font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:7.5px;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.9);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;min-width:0;display:block;";
   nameEl.textContent=p.name;
   bottomRow.appendChild(nameEl);
   cell.appendChild(bottomRow);
