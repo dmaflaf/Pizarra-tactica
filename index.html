@@ -1135,7 +1135,23 @@ function applyFormation(f){
 }
 
 // ─── FIELD ───────────────────────────────────────────────────
+// Tamaño de las fichas según el ancho real del campo: en celular se queda en
+// 42px como siempre, pero en iPad/pantallas grandes crece (hasta 84px) para
+// que las fotos no se vean diminutas.
+function tokenSize(){
+  const fw=Math.min(window.innerWidth-28,860);
+  return Math.round(Math.min(84,Math.max(42,fw*0.09)));
+}
+let _lastTokSize=0, _resizeTimer=null;
+window.addEventListener("resize",()=>{
+  clearTimeout(_resizeTimer);
+  _resizeTimer=setTimeout(()=>{
+    if(state.tab==="board" && !document.body.style.overflow && tokenSize()!==_lastTokSize) render();
+  },250);
+});
+
 function buildField(){
+  const TS=tokenSize(), TK=TS/42; _lastTokSize=TS;
   const wrap=document.createElement("div");
   wrap.id="tactic-field";
   wrap.style.cssText="position:relative;width:100%;padding-bottom:148%;border-radius:16px;overflow:hidden;touch-action:pan-y;box-shadow:0 0 0 3px rgba(255,255,255,.06),0 8px 40px rgba(0,0,0,.6);";
@@ -1257,7 +1273,7 @@ function buildField(){
     const circleWrap=document.createElement("div");
     circleWrap.style.cssText="position:relative;";
     const circle=document.createElement("div");
-    circle.style.cssText=`width:42px;height:42px;border-radius:50%;overflow:hidden;
+    circle.style.cssText=`width:${TS}px;height:${TS}px;border-radius:50%;overflow:hidden;
       border:${isSel?"3px solid #ffd700":`2.5px solid ${p.color}`};
       background:${p.photo?"transparent":p.color};
       display:flex;align-items:center;justify-content:center;
@@ -1268,15 +1284,16 @@ function buildField(){
       circle.appendChild(img);
     } else {
       const num=document.createElement("span");
-      num.style.cssText=`font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:16px;color:${p.color==="#cbd5e1"?"#1e293b":"#fff"};`;
+      num.style.cssText=`font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:${Math.round(16*TK)}px;color:${p.color==="#cbd5e1"?"#1e293b":"#fff"};`;
       num.textContent=p.number;
       circle.appendChild(num);
     }
     circleWrap.appendChild(circle);
-    circleWrap.insertAdjacentHTML("beforeend", captainBadgeHTML(p,42));
+    circleWrap.insertAdjacentHTML("beforeend", captainBadgeHTML(p,TS));
     el.appendChild(circleWrap);
     const lbl=document.createElement("div");
     lbl.className="tok-label"; lbl.textContent=p.name;
+    lbl.style.fontSize=(8*TK).toFixed(1)+"px"; lbl.style.maxWidth=Math.round(56*TK)+"px";
     el.appendChild(lbl);
 
     // Drag
