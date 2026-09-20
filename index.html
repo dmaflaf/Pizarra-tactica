@@ -62,21 +62,21 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;}
     display:flex;align-items:center;justify-content:center;gap:8px;">
     💾 GUARDAR SESIÓN
   </button>
-  <button onclick="exportBackup()" title="Descargar respaldo .json" style="
+  <button onclick="openExportModal()" title="Exportar datos (Excel, fotos, respaldo)" style="
     padding:13px 14px;border-radius:14px;border:none;cursor:pointer;
     background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);
     color:#94a3b8;font-family:'Barlow Condensed',sans-serif;
     font-weight:900;font-size:15px;">
-    ⬇️
+    📤
   </button>
-  <button onclick="document.getElementById('import-input').click()" title="Cargar respaldo .json" style="
+  <button onclick="document.getElementById('import-input').click()" title="Cargar respaldo (.json o paquete .zip)" style="
     padding:13px 14px;border-radius:14px;border:none;cursor:pointer;
     background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);
     color:#94a3b8;font-family:'Barlow Condensed',sans-serif;
     font-weight:900;font-size:15px;">
     ⬆️
   </button>
-  <input type="file" id="import-input" accept="application/json" style="display:none" onchange="importBackup(event)"/>
+  <input type="file" id="import-input" accept="application/json,.json,application/zip,.zip" style="display:none" onchange="importBackup(event)"/>
   <button onclick="confirmClear()" style="
     padding:13px 16px;border-radius:14px;border:none;cursor:pointer;
     background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2);
@@ -339,30 +339,45 @@ function exportBackup(){
   }
 }
 
+function applyBackupData(data){
+  if(!data.players || !Array.isArray(data.players)) throw new Error("formato inválido");
+  state.players=data.players;
+  state.tokens=data.tokens||[];
+  state.formation=data.formation||"4-4-2";
+  state.drawings=data.drawings||[];
+  state.club=data.club||{name:"",crest:null};
+  state.match=data.match||{rival:"",date:"",time:"",stadium:""};
+  state.confirmed=Array.isArray(data.confirmed)?data.confirmed:[];
+  if(Array.isArray(data.plays)){ state.plays=data.plays; savePlaysToStorage(); }
+  state.selToken=null;
+  render();
+  saveSession();
+  showToast("⬆️ Respaldo cargado correctamente","ok");
+}
+
+// Acepta el respaldo .json de siempre o el "Paquete completo" .zip
+// (en ese caso busca dentro el archivo respaldo_pizarra.json).
 function importBackup(evt){
   const f=evt.target.files[0]; if(!f) return;
+  const isZip=/\.zip$/i.test(f.name)||/zip/i.test(f.type||"");
   const reader=new FileReader();
-  reader.onload=e=>{
+  reader.onload=async e=>{
     try{
-      const data=JSON.parse(e.target.result);
-      if(!data.players || !Array.isArray(data.players)) throw new Error("formato inválido");
-      state.players=data.players;
-      state.tokens=data.tokens||[];
-      state.formation=data.formation||"4-4-2";
-      state.drawings=data.drawings||[];
-      state.club=data.club||{name:"",crest:null};
-      state.match=data.match||{rival:"",date:"",time:"",stadium:""};
-      state.confirmed=Array.isArray(data.confirmed)?data.confirmed:[];
-      if(Array.isArray(data.plays)){ state.plays=data.plays; savePlaysToStorage(); }
-      state.selToken=null;
-      render();
-      saveSession();
-      showToast("⬆️ Respaldo cargado correctamente","ok");
+      let text;
+      if(isZip){
+        const entries=await readZip(e.target.result);
+        const en=entries.find(x=>/respaldo_pizarra\.json$/i.test(x.name))||entries.find(x=>/\.json$/i.test(x.name));
+        if(!en) throw new Error("sin respaldo dentro del zip");
+        text=new TextDecoder().decode(await zipEntryBytes(en));
+      } else {
+        text=e.target.result;
+      }
+      applyBackupData(JSON.parse(text));
     }catch(err){
       showToast("❌ Archivo de respaldo inválido","err");
     }
   };
-  reader.readAsText(f);
+  if(isZip) reader.readAsArrayBuffer(f); else reader.readAsText(f);
   evt.target.value="";
 }
 
@@ -560,6 +575,13 @@ function renderSquad(container){
     stats.innerHTML+=`<div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);border-radius:12px;padding:10px 0;text-align:center;"><div style="font-size:16px;">${s.icon}</div><div style="font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:22px;color:#4ade80;line-height:1.1;">${s.v}</div><div style="font-size:10px;color:#475569;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px;">${s.l.toUpperCase()}</div></div>`;
   });
   container.appendChild(stats);
+
+  // Acceso rápido a la exportación de datos
+  const expBtn=document.createElement("button");
+  expBtn.style.cssText="width:100%;padding:11px 0;margin-bottom:14px;border-radius:12px;border:1px solid rgba(74,222,128,.3);background:rgba(74,222,128,.08);color:#4ade80;font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:13px;letter-spacing:.6px;cursor:pointer;";
+  expBtn.textContent="📤  EXPORTAR DATOS · Excel · Fotos · Respaldo";
+  expBtn.addEventListener("click",openExportModal);
+  container.appendChild(expBtn);
 
   // Lista
   const filtered=state.players.filter(p=>p.name.toLowerCase().includes(state.search.toLowerCase())||String(p.number).includes(state.search));
@@ -1559,6 +1581,359 @@ function mkInput(label,type,val,ph,id){
   inp.style.cssText="width:100%;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:10px 12px;color:#f1f5f9;font-size:14px;font-family:'Barlow Condensed',sans-serif;outline:none;box-sizing:border-box;";
   wrap.appendChild(lbl); wrap.appendChild(inp);
   return wrap;
+}
+
+// ─── EXPORTAR DATOS ───────────────────────────────────────────
+// Exporta todo lo guardado en la sesión (jugadores, fotos, posiciones,
+// convocatoria, partido, pizarra y jugadas) en formatos que se pueden abrir
+// fuera de la app: Excel (.xlsx con las fotos incrustadas), ZIP con las
+// fotos como archivos JPG, y un paquete completo (Excel + fotos + respaldo).
+// No usa librerías externas: el ZIP y el XLSX se arman aquí mismo, así que
+// funciona sin internet igual que el resto de la pizarra.
+const _enc=new TextEncoder();
+const _crcTable=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1);t[n]=c>>>0;}return t;})();
+function crc32(u8){let c=0xFFFFFFFF;for(let i=0;i<u8.length;i++)c=_crcTable[(c^u8[i])&0xFF]^(c>>>8);return (c^0xFFFFFFFF)>>>0;}
+
+// ZIP sin compresión (método "store"): los JPG ya vienen comprimidos y el
+// resto pesa poco, así que es simple y compatible con cualquier programa.
+function buildZip(files){
+  const parts=[], central=[]; let offset=0;
+  const now=new Date();
+  const dosTime=(now.getHours()<<11)|(now.getMinutes()<<5)|(now.getSeconds()>>1);
+  const dosDate=((now.getFullYear()-1980)<<9)|((now.getMonth()+1)<<5)|now.getDate();
+  files.forEach(f=>{
+    const nameB=_enc.encode(f.name);
+    const data=typeof f.data==="string"?_enc.encode(f.data):f.data;
+    const crc=crc32(data);
+    const lh=new DataView(new ArrayBuffer(30));
+    lh.setUint32(0,0x04034b50,true); lh.setUint16(4,20,true); lh.setUint16(6,0x0800,true); lh.setUint16(8,0,true);
+    lh.setUint16(10,dosTime,true); lh.setUint16(12,dosDate,true); lh.setUint32(14,crc,true);
+    lh.setUint32(18,data.length,true); lh.setUint32(22,data.length,true);
+    lh.setUint16(26,nameB.length,true); lh.setUint16(28,0,true);
+    parts.push(lh.buffer,nameB,data);
+    const ch=new DataView(new ArrayBuffer(46));
+    ch.setUint32(0,0x02014b50,true); ch.setUint16(4,20,true); ch.setUint16(6,20,true);
+    ch.setUint16(8,0x0800,true); ch.setUint16(10,0,true);
+    ch.setUint16(12,dosTime,true); ch.setUint16(14,dosDate,true); ch.setUint32(16,crc,true);
+    ch.setUint32(20,data.length,true); ch.setUint32(24,data.length,true);
+    ch.setUint16(28,nameB.length,true); ch.setUint32(42,offset,true);
+    central.push(ch.buffer,nameB);
+    offset+=30+nameB.length+data.length;
+  });
+  const cdSize=central.reduce((a,b)=>a+b.byteLength,0);
+  const end=new DataView(new ArrayBuffer(22));
+  end.setUint32(0,0x06054b50,true); end.setUint16(8,files.length,true); end.setUint16(10,files.length,true);
+  end.setUint32(12,cdSize,true); end.setUint32(16,offset,true);
+  return new Blob([...parts,...central,end.buffer],{type:"application/zip"});
+}
+
+// Lectura de ZIP (para poder volver a cargar el paquete completo con ⬆️).
+async function readZip(buf){
+  const dv=new DataView(buf), u8=new Uint8Array(buf);
+  let e=-1;
+  for(let i=u8.length-22;i>=Math.max(0,u8.length-65558);i--){
+    if(dv.getUint32(i,true)===0x06054b50){e=i;break;}
+  }
+  if(e<0) throw new Error("zip inválido");
+  const n=dv.getUint16(e+10,true); let p=dv.getUint32(e+16,true); const out=[];
+  for(let i=0;i<n;i++){
+    if(dv.getUint32(p,true)!==0x02014b50) throw new Error("zip inválido");
+    const method=dv.getUint16(p+10,true), csize=dv.getUint32(p+20,true);
+    const nlen=dv.getUint16(p+28,true), elen=dv.getUint16(p+30,true), clen=dv.getUint16(p+32,true);
+    const lho=dv.getUint32(p+42,true);
+    const name=new TextDecoder().decode(u8.subarray(p+46,p+46+nlen));
+    const start=lho+30+dv.getUint16(lho+26,true)+dv.getUint16(lho+28,true);
+    out.push({name,method,raw:u8.subarray(start,start+csize)});
+    p+=46+nlen+elen+clen;
+  }
+  return out;
+}
+async function zipEntryBytes(en){
+  if(en.method===0) return en.raw;
+  if(en.method===8 && typeof DecompressionStream!=="undefined"){
+    const stream=new Blob([en.raw]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+  }
+  throw new Error("compresión de zip no soportada");
+}
+
+// ── XLSX ──
+function xe(s){
+  return String(s==null?"":s).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g,"")
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+function xlCol(i){let s="";i++;while(i>0){const m=(i-1)%26;s=String.fromCharCode(65+m)+s;i=Math.floor((i-1)/26);}return s;}
+const _NS_MAIN="http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+const _NS_REL="http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+const _XML_HEAD='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XLSX_MIME="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+const _PX=9525; // EMU por píxel
+
+function buildSheetXml(sh,hasDrawing){
+  let x=_XML_HEAD+`<worksheet xmlns="${_NS_MAIN}" xmlns:r="${_NS_REL}">`;
+  x+='<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>';
+  x+='<sheetFormatPr defaultRowHeight="15"/>';
+  if(sh.widths&&sh.widths.length){
+    x+="<cols>"+sh.widths.map((w,i)=>`<col min="${i+1}" max="${i+1}" width="${w}" customWidth="1"/>`).join("")+"</cols>";
+  }
+  x+="<sheetData>";
+  sh.rows.forEach((r,ri)=>{
+    const h=ri===0?30:(sh.rowHeights&&sh.rowHeights[ri]);
+    x+=`<row r="${ri+1}"${h?` ht="${h}" customHeight="1"`:""}>`;
+    r.forEach((v,ci)=>{
+      if(v===null||v===undefined||v==="") return;
+      const ref=xlCol(ci)+(ri+1), st=ri===0?1:2;
+      if(typeof v==="number"&&isFinite(v)) x+=`<c r="${ref}" s="${st}"><v>${v}</v></c>`;
+      else x+=`<c r="${ref}" s="${st}" t="inlineStr"><is><t xml:space="preserve">${xe(v)}</t></is></c>`;
+    });
+    x+="</row>";
+  });
+  x+="</sheetData>";
+  if(hasDrawing) x+='<drawing r:id="rId1"/>';
+  return x+"</worksheet>";
+}
+
+function buildDrawingXml(images){
+  let x=_XML_HEAD+`<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="${_NS_REL}">`;
+  images.forEach((im,i)=>{
+    const k=Math.min(im.box/im.w, im.box/im.h);
+    const cx=Math.round(im.w*k*_PX), cy=Math.round(im.h*k*_PX);
+    const off=3*_PX;
+    x+=`<xdr:twoCellAnchor editAs="oneCell"><xdr:from><xdr:col>${im.col}</xdr:col><xdr:colOff>${off}</xdr:colOff><xdr:row>${im.row}</xdr:row><xdr:rowOff>${off}</xdr:rowOff></xdr:from><xdr:to><xdr:col>${im.col}</xdr:col><xdr:colOff>${off+cx}</xdr:colOff><xdr:row>${im.row}</xdr:row><xdr:rowOff>${off+cy}</xdr:rowOff></xdr:to>`
+      +`<xdr:pic><xdr:nvPicPr><xdr:cNvPr id="${i+2}" name="${xe(im.label||"Foto "+(i+1))}"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr>`
+      +`<xdr:blipFill><a:blip r:embed="rId${i+1}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill>`
+      +`<xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic><xdr:clientData/></xdr:twoCellAnchor>`;
+  });
+  return x+"</xdr:wsDr>";
+}
+
+// sheets: [{name, rows:[[...]], widths:[...], rowHeights:{idx:pts}, images:[{col,row,bytes,ext,w,h,box,label}]}]
+async function buildXlsx(sheets){
+  const files=[]; let media=0, drawN=0;
+  const ctSheets=[], ctDraw=[];
+  let wbSheets="", wbRels="";
+  sheets.forEach((sh,i)=>{
+    const n=i+1, imgs=sh.images||[];
+    let hasDrawing=false;
+    if(imgs.length){
+      hasDrawing=true; drawN++;
+      let drels=_XML_HEAD+'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">';
+      imgs.forEach((im,j)=>{
+        media++;
+        const mname=`image${media}.${im.ext}`;
+        files.push({name:"xl/media/"+mname,data:im.bytes});
+        drels+=`<Relationship Id="rId${j+1}" Type="${_NS_REL}/image" Target="../media/${mname}"/>`;
+      });
+      files.push({name:`xl/drawings/drawing${drawN}.xml`,data:buildDrawingXml(imgs)});
+      files.push({name:`xl/drawings/_rels/drawing${drawN}.xml.rels`,data:drels+"</Relationships>"});
+      files.push({name:`xl/worksheets/_rels/sheet${n}.xml.rels`,data:_XML_HEAD+`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${_NS_REL}/drawing" Target="../drawings/drawing${drawN}.xml"/></Relationships>`});
+      ctDraw.push(`<Override PartName="/xl/drawings/drawing${drawN}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>`);
+    }
+    files.push({name:`xl/worksheets/sheet${n}.xml`,data:buildSheetXml(sh,hasDrawing)});
+    ctSheets.push(`<Override PartName="/xl/worksheets/sheet${n}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`);
+    wbSheets+=`<sheet name="${xe(sh.name)}" sheetId="${n}" r:id="rId${n}"/>`;
+    wbRels+=`<Relationship Id="rId${n}" Type="${_NS_REL}/worksheet" Target="worksheets/sheet${n}.xml"/>`;
+  });
+  const sid=sheets.length+1;
+  wbRels+=`<Relationship Id="rId${sid}" Type="${_NS_REL}/styles" Target="styles.xml"/>`;
+  const head=[
+    {name:"[Content_Types].xml",data:_XML_HEAD+'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="jpg" ContentType="image/jpeg"/><Default Extension="png" ContentType="image/png"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'+ctSheets.join("")+ctDraw.join("")+"</Types>"},
+    {name:"_rels/.rels",data:_XML_HEAD+`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${_NS_REL}/officeDocument" Target="xl/workbook.xml"/></Relationships>`},
+    {name:"xl/workbook.xml",data:_XML_HEAD+`<workbook xmlns="${_NS_MAIN}" xmlns:r="${_NS_REL}"><sheets>${wbSheets}</sheets></workbook>`},
+    {name:"xl/_rels/workbook.xml.rels",data:_XML_HEAD+`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${wbRels}</Relationships>`},
+    {name:"xl/styles.xml",data:_XML_HEAD+`<styleSheet xmlns="${_NS_MAIN}"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF16A34A"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`}
+  ];
+  const zip=buildZip([...head,...files]);
+  return new Uint8Array(await zip.arrayBuffer());
+}
+
+// ── Fotos ──
+function dataUrlToBytes(u){
+  const b=atob(u.slice(u.indexOf(",")+1)); const a=new Uint8Array(b.length);
+  for(let i=0;i<b.length;i++) a[i]=b.charCodeAt(i);
+  return a;
+}
+function loadImgEl(src){
+  return new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=src;});
+}
+// Devuelve bytes de la foto tal cual (JPG/PNG) o convertida a JPG si venía
+// en otro formato, más su tamaño real (para incrustarla sin deformarla).
+async function normalizePhoto(dataUrl){
+  const img=await loadImgEl(dataUrl);
+  const w=img.naturalWidth||img.width, h=img.naturalHeight||img.height;
+  const m=/^data:image\/(jpeg|jpg|png);base64,/i.exec(dataUrl);
+  if(m) return {bytes:dataUrlToBytes(dataUrl),ext:m[1].toLowerCase()==="png"?"png":"jpg",w,h};
+  const c=document.createElement("canvas"); c.width=w; c.height=h;
+  const ctx=c.getContext("2d"); ctx.fillStyle="#fff"; ctx.fillRect(0,0,w,h); ctx.drawImage(img,0,0);
+  return {bytes:dataUrlToBytes(c.toDataURL("image/jpeg",0.92)),ext:"jpg",w,h};
+}
+function safeFile(s){
+  return String(s||"").replace(/[\\\/:*?"<>|\u0000-\u001F]/g,"").trim().replace(/\s+/g,"_").slice(0,60);
+}
+async function collectPhotos(){
+  const used=new Set(), out={players:[],crest:null};
+  for(const p of state.players){
+    if(!p.photo) continue;
+    try{
+      const ph=await normalizePhoto(p.photo);
+      let base=String(p.number).padStart(2,"0")+"_"+(safeFile(p.name)||"jugador"), file=base, k=2;
+      while(used.has(file.toLowerCase())){file=base+"_"+k++;}
+      used.add(file.toLowerCase());
+      out.players.push({pid:p.id,file:file+"."+ph.ext,...ph});
+    }catch(e){}
+  }
+  if(state.club.crest){
+    try{ const ph=await normalizePhoto(state.club.crest); out.crest={file:"escudo."+ph.ext,...ph}; }catch(e){}
+  }
+  return out;
+}
+
+// ── Datos → hojas ──
+function positionLabel(code){return code?(POSITION_LABELS[code]||code):"";}
+function captainLabel(p){return p.specialCaptain?"Capitán especial":(p.captain?"Capitán":"");}
+function round1(n){return Math.round(n*10)/10;}
+
+async function buildRosterXlsx(photos){
+  const tokByPid={}; state.tokens.forEach(t=>{tokByPid[t.pid]=t;});
+  const photoByPid={}; photos.players.forEach(ph=>{photoByPid[ph.pid]=ph;});
+  const confirmedSet=new Set(state.confirmed);
+  const stamp=new Date().toLocaleString("es");
+
+  // Hoja 1: Plantilla (con fotos incrustadas)
+  const BOX=60, ROWH=50;
+  const rosterRows=[["N°","Foto","Nombre","Posición","Rol","Capitanía","Estado en pizarra","Convocado","X (%) izq→der","Y (%) arriba→abajo","Archivo de foto"]];
+  const rosterImgs=[], rowHeights={};
+  state.players.forEach((p,i)=>{
+    const t=tokByPid[p.id], ph=photoByPid[p.id];
+    rosterRows.push([p.number,"",p.name,p.position||"",positionLabel(p.position),captainLabel(p),t?"En campo":"Banca",confirmedSet.has(p.id)?"Sí":"No",t?round1(t.x):"",t?round1(t.y):"",ph?"fotos/"+ph.file:"Sin foto"]);
+    rowHeights[i+1]=ph?ROWH:20;
+    if(ph) rosterImgs.push({col:1,row:i+1,bytes:ph.bytes,ext:ph.ext,w:ph.w,h:ph.h,box:BOX,label:p.name});
+  });
+  const roster={name:"Plantilla",rows:rosterRows,widths:[6,11,24,10,16,16,16,11,13,15,26],rowHeights,images:rosterImgs};
+
+  // Hoja 2: Convocatoria (orden del póster: POR, DEF, MED, DEL)
+  const convRows=[["#","N°","Nombre","Posición","Rol","Capitanía"]];
+  confirmedPlayersSorted().forEach((p,i)=>convRows.push([i+1,p.number,p.name,p.position||"",positionLabel(p.position),captainLabel(p)]));
+  const conv={name:"Convocatoria",rows:convRows,widths:[5,6,26,10,16,16]};
+
+  // Hoja 3: Pizarra actual
+  const boardRows=[["N°","Jugador","Posición","X (%) izq→der","Y (%) arriba→abajo"]];
+  state.tokens.forEach(t=>{
+    const p=getPlayer(t.pid); if(!p) return;
+    boardRows.push([p.number,p.name,p.position||"",round1(t.x),round1(t.y)]);
+  });
+  const board={name:"Pizarra",rows:boardRows,widths:[6,26,10,15,18]};
+
+  // Hoja 4: Jugadas guardadas (una fila por jugador en cada jugada)
+  const playRows=[["Jugada","Formación","Guardada","Dibujos","N°","Jugador","Posición","X (%)","Y (%)"]];
+  state.plays.forEach(pl=>{
+    const dr=(pl.drawings||[]).length, toks=pl.tokens||[];
+    if(!toks.length) playRows.push([pl.name,pl.formation||"",pl.savedAt||"",dr,"","","","",""]);
+    toks.forEach(t=>{
+      const p=getPlayer(t.pid);
+      playRows.push([pl.name,pl.formation||"",pl.savedAt||"",dr,p?p.number:"",p?p.name:"(jugador eliminado)",p?(p.position||""):"",round1(t.x),round1(t.y)]);
+    });
+  });
+  const plays={name:"Jugadas",rows:playRows,widths:[26,11,20,9,6,26,10,9,9]};
+
+  // Hoja 5: Partido y club (con escudo)
+  const matchRows=[["Dato","Valor"],
+    ["Club",state.club.name||""],
+    ["Rival",state.match.rival||""],
+    ["Fecha",state.match.date||""],
+    ["Hora",state.match.time||""],
+    ["Estadio",state.match.stadium||""],
+    ["Formación en pizarra",state.formation],
+    ["Jugadores en plantilla",String(state.players.length)],
+    ["Jugadores en campo",String(state.tokens.filter(t=>getPlayer(t.pid)).length)],
+    ["Convocados",String(state.confirmed.filter(id=>getPlayer(id)).length)],
+    ["Jugadas guardadas",String(state.plays.length)],
+    ["Exportado",stamp]];
+  const match={name:"Partido",rows:matchRows,widths:[26,30,14]};
+  if(photos.crest){
+    match.rows[0][2]="Escudo";
+    match.rowHeights={1:72};
+    match.images=[{col:2,row:1,bytes:photos.crest.bytes,ext:photos.crest.ext,w:photos.crest.w,h:photos.crest.h,box:90,label:"Escudo"}];
+  }
+  return buildXlsx([roster,conv,board,plays,match]);
+}
+
+function saveBlob(blob,fileName){
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url; a.download=fileName;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),4000);
+  showToast("⬇️ Descargado: "+fileName,"ok",3800);
+}
+
+async function runExport(kind){
+  if(kind==="json"){ exportBackup(); return; }
+  showToast("⏳ Preparando exportación…","ok",3000);
+  try{
+    const stamp=new Date().toISOString().slice(0,10);
+    const clubName=safeFile(state.club.name);
+    const base="pizarra"+(clubName?"_"+clubName:"")+"_"+stamp;
+    const photos=await collectPhotos();
+    if(kind==="xlsx"){
+      const bytes=await buildRosterXlsx(photos);
+      saveBlob(new Blob([bytes],{type:XLSX_MIME}),base+".xlsx");
+    } else if(kind==="photos"){
+      if(!photos.players.length && !photos.crest){ showToast("⚠️ No hay fotos cargadas para exportar","warn"); return; }
+      const files=photos.players.map(ph=>({name:"fotos/"+ph.file,data:ph.bytes}));
+      if(photos.crest) files.push({name:photos.crest.file,data:photos.crest.bytes});
+      saveBlob(buildZip(files),base+"_fotos.zip");
+    } else if(kind==="all"){
+      const xlsx=await buildRosterXlsx(photos);
+      const files=[{name:"plantilla.xlsx",data:xlsx}];
+      photos.players.forEach(ph=>files.push({name:"fotos/"+ph.file,data:ph.bytes}));
+      if(photos.crest) files.push({name:photos.crest.file,data:photos.crest.bytes});
+      files.push({name:"respaldo_pizarra.json",data:JSON.stringify({...buildSaveData(),plays:state.plays},null,2)});
+      saveBlob(buildZip(files),base+"_completo.zip");
+    }
+  }catch(e){
+    console.error(e);
+    showToast("❌ No se pudo exportar","err");
+  }
+}
+
+function openExportModal(){
+  const withPhoto=state.players.filter(p=>p.photo).length;
+  const inField=state.tokens.filter(t=>getPlayer(t.pid)).length;
+  const overlay=document.createElement("div");
+  overlay.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.82);backdrop-filter:blur(12px);display:flex;align-items:center;justify-content:center;z-index:3000;padding:16px;";
+  const close=()=>overlay.remove();
+  overlay.addEventListener("click",e=>{if(e.target===overlay) close();});
+  const box=document.createElement("div");
+  box.style.cssText="background:#0c1320;border:1px solid rgba(74,222,128,.25);border-radius:22px;padding:22px 18px;width:100%;max-width:380px;max-height:92vh;overflow-y:auto;box-shadow:0 30px 80px rgba(0,0,0,.8);";
+  box.innerHTML=`
+    <div style="text-align:center;margin-bottom:14px;">
+      <div style="font-size:30px;margin-bottom:6px;">📤</div>
+      <div style="font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:18px;color:#f1f5f9;letter-spacing:.5px;">EXPORTAR DATOS</div>
+      <div style="font-family:'Barlow',sans-serif;font-size:12px;color:#94a3b8;margin-top:6px;line-height:1.4;">${state.players.length} jugadores · ${withPhoto} con foto · ${inField} en campo · ${state.confirmed.length} convocados · ${state.plays.length} jugadas</div>
+    </div>`;
+  const opts=[
+    {kind:"all",icon:"📦",title:"Paquete completo (.zip)",desc:"Excel + todas las fotos + respaldo para volver a cargar. Lo más completo.",primary:true},
+    {kind:"xlsx",icon:"📊",title:"Excel (.xlsx)",desc:"Nombres, posiciones, capitanía, coordenadas, convocatoria y jugadas, con las fotos incrustadas."},
+    {kind:"photos",icon:"🖼️",title:"Solo fotos (.zip)",desc:"Cada foto como archivo JPG con el nombre del jugador, más el escudo."},
+    {kind:"json",icon:"💾",title:"Respaldo (.json)",desc:"Copia exacta de la sesión para restaurarla con el botón ⬆️."}
+  ];
+  opts.forEach(o=>{
+    const b=document.createElement("button");
+    b.style.cssText=`display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:12px 14px;margin-bottom:8px;border-radius:14px;cursor:pointer;${o.primary?"border:1px solid rgba(74,222,128,.4);background:rgba(74,222,128,.1);":"border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);"}`;
+    b.innerHTML=`<div style="font-size:24px;flex-shrink:0;">${o.icon}</div>
+      <div style="min-width:0;"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:15px;letter-spacing:.3px;color:${o.primary?"#4ade80":"#f1f5f9"};">${o.title}</div>
+      <div style="font-family:'Barlow',sans-serif;font-size:11.5px;color:#94a3b8;line-height:1.35;margin-top:2px;">${o.desc}</div></div>`;
+    b.addEventListener("click",()=>{close(); runExport(o.kind);});
+    box.appendChild(b);
+  });
+  const cancel=document.createElement("button");
+  cancel.textContent="Cerrar";
+  cancel.style.cssText="width:100%;padding:11px 0;margin-top:2px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:transparent;color:#94a3b8;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:13px;letter-spacing:.3px;cursor:pointer;";
+  cancel.addEventListener("click",close);
+  box.appendChild(cancel);
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
 }
 
 // ─── START ────────────────────────────────────────────────────
