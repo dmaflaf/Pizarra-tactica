@@ -517,7 +517,7 @@ function render(){
 
   // ── Content
   const content=document.createElement("div");
-  content.style.cssText="padding:14px 14px 20px;max-width:860px;margin:0 auto;";
+  content.style.cssText="padding:14px 14px 20px;max-width:"+((state.tab==="board"&&isTabletLandscape())?1200:860)+"px;margin:0 auto;";
   if(state.tab==="squad") renderSquad(content);
   else if(state.tab==="confirmados") renderConfirmados(content);
   else renderBoard(content);
@@ -955,6 +955,17 @@ function exportConvocatoriaImage(){
 
 // ─── BOARD ───────────────────────────────────────────────────
 function renderBoard(container){
+  // En tablet horizontal: columna izquierda (herramientas + banca) y campo a la derecha.
+  const land=isTabletLandscape();
+  let host=container, fieldHost=container;
+  if(land){
+    const rowEl=document.createElement("div");
+    rowEl.style.cssText="display:flex;gap:16px;align-items:flex-start;";
+    host=document.createElement("div"); host.style.cssText="flex:1;min-width:0;";
+    fieldHost=document.createElement("div"); fieldHost.style.cssText="flex-shrink:0;";
+    rowEl.appendChild(host); rowEl.appendChild(fieldHost);
+    container.appendChild(rowEl);
+  }
   // Formation pills
   const frow=document.createElement("div");
   frow.style.cssText="display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin-bottom:10px;";
@@ -975,7 +986,7 @@ function renderBoard(container){
     q.addEventListener("click",()=>{state.tokens=state.tokens.filter(t=>t.id!==state.selToken);state.selToken=null;render();});
     frow.appendChild(q);
   }
-  container.appendChild(frow);
+  host.appendChild(frow);
 
   // ── Jugadas guardadas + exportar imagen
   const playsRow=document.createElement("div");
@@ -993,7 +1004,7 @@ function renderBoard(container){
   exportImgBtn.textContent="🖼️ EXPORTAR IMAGEN";
   exportImgBtn.addEventListener("click",exportBoardImage);
   playsRow.appendChild(savePlayBtn); playsRow.appendChild(libBtn); playsRow.appendChild(exportImgBtn);
-  container.appendChild(playsRow);
+  host.appendChild(playsRow);
 
   // ── Herramientas de dibujo
   const drow=document.createElement("div");
@@ -1032,16 +1043,24 @@ function renderBoard(container){
       drow.appendChild(clearDrawBtn);
     }
   }
-  container.appendChild(drow);
+  host.appendChild(drow);
 
-  container.appendChild(buildField());
+  const fwPx=fieldWidthPx(), fieldEl=buildField();
+  if(fwPx){
+    const holder=document.createElement("div");
+    holder.style.cssText="width:"+fwPx+"px;max-width:100%;"+(land?"":"margin:0 auto;");
+    holder.appendChild(fieldEl);
+    fieldHost.appendChild(holder);
+  } else {
+    fieldHost.appendChild(fieldEl);
+  }
 
   // Bench
   const bl=document.createElement("div");
   bl.id="bench-label";
   bl.style.cssText="color:#475569;font-size:10px;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px;text-transform:uppercase;margin:14px 0 8px;";
   bl.textContent="🪑 BANCA — toca para añadir al campo";
-  container.appendChild(bl);
+  host.appendChild(bl);
   const bench=document.createElement("div");
   bench.className="bench-scroll";
   const bp=state.players.filter(p=>!onField(p.id));
@@ -1061,13 +1080,13 @@ function renderBoard(container){
       bench.appendChild(item);
     });
   }
-  container.appendChild(bench);
+  host.appendChild(bench);
   if(state.tokens.length>0){
     const cb=document.createElement("button");
     cb.style.cssText="margin-top:12px;width:100%;padding:11px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:12px;color:#ef4444;cursor:pointer;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:13px;letter-spacing:1px;";
     cb.textContent="🗑  LIMPIAR CAMPO";
     cb.addEventListener("click",()=>{state.tokens=[];state.selToken=null;render();});
-    container.appendChild(cb);
+    host.appendChild(cb);
   }
 }
 
@@ -1135,23 +1154,35 @@ function applyFormation(f){
 }
 
 // ─── FIELD ───────────────────────────────────────────────────
-// Tamaño de las fichas según el ancho real del campo: en celular se queda en
-// 42px como siempre, pero en iPad/pantallas grandes crece (hasta 84px) para
-// que las fotos no se vean diminutas.
-function tokenSize(){
-  const fw=Math.min(window.innerWidth-28,860);
-  return Math.round(Math.min(84,Math.max(42,fw*0.09)));
+// ── Tamaño del campo y de las fichas ──
+// En celular todo queda como siempre. En iPad/tablet (≥700px) el campo se
+// reduce para que quepa completo en la pantalla junto con las herramientas:
+//  · vertical: herramientas arriba y campo debajo, ajustado al alto disponible
+//  · horizontal: herramientas y banca a la izquierda, campo a la derecha
+function isTablet(){return window.innerWidth>=700;}
+function isTabletLandscape(){return isTablet() && window.innerWidth>window.innerHeight*1.15;}
+function fieldWidthPx(){
+  if(!isTablet()) return null;
+  const land=isTabletLandscape();
+  const cw=Math.min(window.innerWidth-28, land?1200:860);
+  const byHeight=(window.innerHeight-(land?200:330))/1.48; // el campo mide 148% de su ancho
+  return Math.round(Math.max(300, land?Math.min(cw*0.6,byHeight):Math.min(cw,byHeight)));
 }
-let _lastTokSize=0, _resizeTimer=null;
+function tokenSize(){
+  const fw=fieldWidthPx()||Math.min(window.innerWidth-28,860);
+  return Math.round(Math.min(84,Math.max(42,fw*(isTablet()?0.105:0.09))));
+}
+function layoutKey(){return fieldWidthPx()+"|"+isTabletLandscape();}
+let _lastLayout="", _resizeTimer=null;
 window.addEventListener("resize",()=>{
   clearTimeout(_resizeTimer);
   _resizeTimer=setTimeout(()=>{
-    if(state.tab==="board" && !document.body.style.overflow && tokenSize()!==_lastTokSize) render();
+    if(state.tab==="board" && !document.body.style.overflow && layoutKey()!==_lastLayout) render();
   },250);
 });
 
 function buildField(){
-  const TS=tokenSize(), TK=TS/42; _lastTokSize=TS;
+  const TS=tokenSize(), TK=TS/42; _lastLayout=layoutKey();
   const wrap=document.createElement("div");
   wrap.id="tactic-field";
   wrap.style.cssText="position:relative;width:100%;padding-bottom:148%;border-radius:16px;overflow:hidden;touch-action:pan-y;box-shadow:0 0 0 3px rgba(255,255,255,.06),0 8px 40px rgba(0,0,0,.6);";
